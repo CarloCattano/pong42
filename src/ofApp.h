@@ -94,6 +94,8 @@ private:
 	int     sine_distorsion;
 	float   dist_freq;
     int     motionAmount;
+    bool    getMotion;
+    ofColor bgColor;
 
 	void generateParticles(int w, int h);
 

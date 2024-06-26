@@ -21,6 +21,10 @@ void ofApp::setup() {
 	vidPlayer.setLoopState(OF_LOOP_NORMAL);
 #endif
 
+    getMotion = true;
+
+    bgColor = ofColor(0, 0, 0, 255);
+
 	blurAmount = 5;
 	bMirror = true;
 	cvDownScale = 12;
@@ -66,7 +70,7 @@ ofColor circleColor = ofColor(255, 0, 0, 255);
 
 //--------------------------------------------------------------
 void ofApp::update() {
-	ofBackground(100, 100, 100);
+	ofBackground(bgColor);
 
 	bool bNewFrame = false;
 	int sourceWidth = vidGrabber.getWidth();
@@ -109,32 +113,31 @@ void ofApp::update() {
 		colorImg.setFromPixels(vidPlayer.getPixels());
 #endif
 
-		previousImage.resize(currentImage.getWidth(), currentImage.getHeight());
-		diffImage.absDiff(currentImage, previousImage);
-		diffImage.threshold(10);
-		
-        motionAmount = diffImage.countNonZeroInRegion(0, 0, diffImage.getWidth(), diffImage.getHeight());
+        if(getMotion) {
+	    	previousImage.resize(currentImage.getWidth(), currentImage.getHeight());
+	    	diffImage.absDiff(currentImage, previousImage);
+	    	diffImage.threshold(10);
+	    	
+            motionAmount = diffImage.countNonZeroInRegion(0, 0, diffImage.getWidth(), diffImage.getHeight());
 
-		ofPixels & pixels = diffImage.getPixels();
+	    	ofPixels & pixels = diffImage.getPixels();
 
-        std::pair<int, int>                 pos;
-        std::map<std::pair<int,int>, int>   normals;
-
-		for (int y = 0; y < diffImage.getWidth(); y++) {
-			for (int x = 0; x < diffImage.getHeight(); x++) {
-	            pos = std::make_pair(x, y);
-    
-                if (pixels.getColor(x, y).getBrightness() > 170) {
-					ofVec2f normal(x / (float)diffImage.getWidth(), y / (float)diffImage.getHeight());
-                    normals[pos] = 1;
-                } else 
-                    normals[pos] = 0;
-			}
-		}
-	
-        previousImage = currentImage.getPixels();
-		//-----------------------------------------------------------------
-
+            std::pair<int, int>                 pos;
+            std::map<std::pair<int,int>, int>   normals;
+       	
+            for (int y = 0; y < diffImage.getWidth(); y++) {
+	    		for (int x = 0; x < diffImage.getHeight(); x++) {
+	                pos = std::make_pair(x, y);
+                    if (pixels.getColor(x, y).getBrightness() > 170) {
+	    				ofVec2f normal(x / (float)diffImage.getWidth(), y / (float)diffImage.getHeight());
+                        normals[pos] = 1;
+                    } else 
+                        normals[pos] = 0;
+	    		}
+	    	}
+            previousImage = currentImage.getPixels();
+	    	//-----------------------------------------------------------------
+        }
 		grayImage = colorImg;
 
 		if (bMirror) {
@@ -168,7 +171,6 @@ void ofApp::update() {
 
 	float deltaTime = ofClamp(ofGetLastFrameTime(), 1.f / 5000.f, 1.f / 5.f);
 
-    // check the pixel at the center of the screen with the optical flow
     glm::vec2 centerForce = getOpticalFlowValueForPercent(0.5, 0.5);
 
     if(centerForce.x > 0.2) {
@@ -182,16 +184,17 @@ void ofApp::update() {
 	
 	size_t numParticles = particles.size();
 	
+    glm::vec2 averageFlow(0, 0);
+
     for (size_t i = 0; i < numParticles; i++) {
 		auto & particle = particles[i];
 		float percentX = particle.pos.x / sourceWidth;
 		float percentY = particle.pos.y / sourceHeight;
 		glm::vec2 flowForce = getOpticalFlowValueForPercent(percentX, percentY);
 		float len2 = glm::length2(flowForce);
-
+        averageFlow += flowForce;
 		particle.vel /= 1.f + deltaTime;
 		if (len2 > minLengthSquared) {
-			// ok lets add some velocity
 			particle.vel += flowForce * (30.0f * deltaTime);
 			if (particle.bAtBasePos) {
 				particle.timeNotTouched = 0.0f;
@@ -211,16 +214,34 @@ void ofApp::update() {
 		}
 		particle.pos += particle.vel * (10.0f * deltaTime);
 	}
+    
+        averageFlow /= numParticles;
+
+        if (averageFlow.x > 0.3 && averageFlow.y < 0.1 && averageFlow.y > -0.1)
+            bgColor = ofColor(0, 255, 0, 255);
+        else if (averageFlow.x < -0.3 && averageFlow.y < 0.1 && averageFlow.y > -0.1)
+            bgColor = ofColor(255, 0, 0, 255);
+        else if(averageFlow.y > 0.3 && averageFlow.x < 0.1 && averageFlow.x > -0.1)
+        {
+        
+            string name = "screenshot_" + ofGetTimestampString() + ".png";
+            ofSaveImage(colorImg.getPixels(), name);
+
+            bgColor = ofColor(0, 0, 0, 255);
+        }
+        else if (averageFlow.y < -0.3 && averageFlow.x < 0.1 && averageFlow.x > -0.1)
+            bgColor = ofColor(255, 255, 255, 255);
+        else
+            bgColor = ofColor(0, 0, 0, 255);
 }
 
 //--------------------------------------------------------------
 void ofApp::draw() {
-	ofBackgroundGradient(ofColor(0), ofColor(20));
+	ofBackgroundGradient(ofColor(0), bgColor);
 	ofSetColor(255);
 
 	if (grayImage.bAllocated) {
 			ofSetColor(80);
-			/*currentImage.draw(0, 0, WIN_W, WIN_H);*/
 			size_t numParticles = particles.size();
 			const ofPixels & vpix = colorImg.getPixels();
 
@@ -246,15 +267,15 @@ void ofApp::draw() {
 	
                 float distorsion = sin(ofGetElapsedTimef() * dist_freq + particle.pos.y * 0.1) * sine_distorsion;
 
-                /*float distorsion = 0.0f;*/
-
 				ofTranslate(particle.pos.x * xmult + distorsion, particle.pos.y * ymult);
 				ofDrawCircle(0, 0, psize);
 				ofPopMatrix();
 			}
 	}
 
-	diffImage.draw(0, 0, colorImg.getWidth(), colorImg.getHeight());
+    if (getMotion) {
+        /*diffImage.draw(0, 0, colorImg.getWidth(), colorImg.getHeight());*/
+    }
 
     // draw a circle in the center of the screen
     ofSetColor(circleColor);
@@ -262,7 +283,7 @@ void ofApp::draw() {
 
 	ofDrawBitmapStringHighlight(ofToString(ofGetFrameRate()), ofGetWidth() / 2, 20);
 
-	ofSetColor(255);
+	ofSetColor(bgColor);
     uiManager.draw();
 }
 
