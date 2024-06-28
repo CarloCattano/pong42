@@ -13,15 +13,15 @@ void ofApp::setup() {
 	ofSetFrameRate(60);
 
 #ifdef _USE_LIVE_VIDEO
-	vidGrabber.setVerbose(true);
-	vidGrabber.setup(320, 240);
+	cam.setVerbose(true);
+	cam.setup(320, 240);
 #else
 	vidPlayer.load("Hand3s.mp4");
 	vidPlayer.play();
 	vidPlayer.setLoopState(OF_LOOP_NORMAL);
 #endif
 
-    bgColor = ofColor(0, 0, 0, 255);
+	bgColor = ofColor(0, 0, 0, 255);
 
 	blurAmount = 5;
 	bMirror = true;
@@ -30,13 +30,13 @@ void ofApp::setup() {
 
 	// store a minimum squared value to apply flow velocity
 	minLengthSquared = 0.5 * 0.5; // 0.5 pixel squared
- 
-    uiManager.spacing_s.addListener(this, &ofApp::spacingChanged);
-    uiManager.particle_size_s.addListener(this, &ofApp::particleSizeChanged);
-    uiManager.sine_distorsion_s.addListener(this, &ofApp::sineDistorsionChanged);
-    uiManager.dist_freq_s.addListener(this, &ofApp::distFreqChanged);
 
-    uiManager.setup();
+	uiManager.spacing_s.addListener(this, &ofApp::spacingChanged);
+	uiManager.particle_size_s.addListener(this, &ofApp::particleSizeChanged);
+	uiManager.sine_distorsion_s.addListener(this, &ofApp::sineDistorsionChanged);
+	uiManager.dist_freq_s.addListener(this, &ofApp::distFreqChanged);
+
+	uiManager.setup();
 
 	ofSetWindowTitle("OpticalFlowYo!");
 }
@@ -71,14 +71,14 @@ void ofApp::update() {
 	ofBackground(bgColor);
 
 	bool bNewFrame = false;
-	int sourceWidth = vidGrabber.getWidth();
-	int sourceHeight = vidGrabber.getHeight();
+	int sourceWidth = cam.getWidth();
+	int sourceHeight = cam.getHeight();
 
 #ifdef _USE_LIVE_VIDEO
-	vidGrabber.update();
-	bNewFrame = vidGrabber.isFrameNew();
-	sourceWidth = vidGrabber.getWidth();
-	sourceHeight = vidGrabber.getHeight();
+	cam.update();
+	bNewFrame = cam.isFrameNew();
+	sourceWidth = cam.getWidth();
+	sourceHeight = cam.getHeight();
 #else
 	vidPlayer.update();
 	bNewFrame = vidPlayer.isFrameNew();
@@ -99,14 +99,14 @@ void ofApp::update() {
 		flowMat = cv::Mat(scaledHeight, scaledWidth, CV_32FC2);
 
 		ofSetWindowShape(WIN_W, WIN_H);
-		
-        generateParticles(sourceWidth, sourceHeight);
+
+		generateParticles(sourceWidth, sourceHeight);
 	}
 
 	if (bNewFrame) {
 
 #ifdef _USE_LIVE_VIDEO
-		colorImg.setFromPixels(vidGrabber.getPixels());
+		colorImg.setFromPixels(cam.getPixels());
 #else
 		colorImg.setFromPixels(vidPlayer.getPixels());
 #endif
@@ -144,28 +144,28 @@ void ofApp::update() {
 
 	float deltaTime = ofClamp(ofGetLastFrameTime(), 1.f / 5000.f, 1.f / 5.f);
 
-    glm::vec2 centerForce = getOpticalFlowValueForPercent(0.5, 0.5);
+	glm::vec2 centerForce = getOpticalFlowValueForPercent(0.5, 0.5);
 
-    if(centerForce.x > 0.2) {
-        circleColor = ofColor(0, 255, 0, 255);
-        sine_distorsion = 4;
-        
-    } else if(centerForce.x < -0.2) {
-        circleColor = ofColor(255, 0, 0, 255);
-        sine_distorsion = 0;
-    }
-	
+	if (centerForce.x > 0.2) {
+		circleColor = ofColor(0, 255, 0, 255);
+		sine_distorsion = 4;
+
+	} else if (centerForce.x < -0.2) {
+		circleColor = ofColor(255, 0, 0, 255);
+		sine_distorsion = 0;
+	}
+
 	size_t numParticles = particles.size();
-	
-    glm::vec2 averageFlow(0, 0);
 
-    for (size_t i = 0; i < numParticles; i++) {
+	glm::vec2 averageFlow(0, 0);
+
+	for (size_t i = 0; i < numParticles; i++) {
 		auto & particle = particles[i];
 		float percentX = particle.pos.x / sourceWidth;
 		float percentY = particle.pos.y / sourceHeight;
 		glm::vec2 flowForce = getOpticalFlowValueForPercent(percentX, percentY);
 		float len2 = glm::length2(flowForce);
-        averageFlow += flowForce;
+		averageFlow += flowForce;
 		particle.vel /= 1.f + deltaTime;
 		if (len2 > minLengthSquared) {
 			particle.vel += flowForce * (30.0f * deltaTime);
@@ -187,71 +187,69 @@ void ofApp::update() {
 		}
 		particle.pos += particle.vel * (10.0f * deltaTime);
 	}
-    
-        averageFlow /= numParticles;
 
-        if (averageFlow.x > 0.3 && averageFlow.y < 0.1 && averageFlow.y > -0.1)
-            bgColor = ofColor(0, 255, 0, 255);
-        else if (averageFlow.x < -0.3 && averageFlow.y < 0.1 && averageFlow.y > -0.1)
-            bgColor = ofColor(255, 0, 0, 255);
-        else if(averageFlow.y > 0.3 && averageFlow.x < 0.1 && averageFlow.x > -0.1)
-        {
-            /*string name = "screenshot_" + ofGetTimestampString() + ".png";*/
-            /*ofSaveImage(colorImg.getPixels(), name);*/
-            bgColor = ofColor(0, 0, 0, 255);
-        }
-        else if (averageFlow.y < -0.3 && averageFlow.x < 0.1 && averageFlow.x > -0.1)
-            bgColor = ofColor(255, 255, 255, 255);
-        else
-            bgColor = ofColor(0, 0, 0, 255);
+	averageFlow /= numParticles;
+
+	if (averageFlow.x > 0.3 && averageFlow.y < 0.1 && averageFlow.y > -0.1)
+		bgColor = ofColor(0, 255, 0, 255);
+	else if (averageFlow.x < -0.3 && averageFlow.y < 0.1 && averageFlow.y > -0.1)
+		bgColor = ofColor(255, 0, 0, 255);
+	else if (averageFlow.y > 0.3 && averageFlow.x < 0.1 && averageFlow.x > -0.1) {
+		bgColor = ofColor(0, 0, 0, 255);
+	} else if (averageFlow.y < -0.3 && averageFlow.x < 0.1 && averageFlow.x > -0.1)
+		bgColor = ofColor(255, 255, 255, 255);
+	else
+		bgColor = ofColor(0, 0, 0, 255);
 }
 
-//--------------------------------------------------------------
 void ofApp::draw() {
 	ofBackgroundGradient(ofColor(0), bgColor);
 	ofSetColor(255);
 
 	if (grayImage.bAllocated) {
-			ofSetColor(80);
-			size_t numParticles = particles.size();
-			const ofPixels & vpix = colorImg.getPixels();
+		ofSetColor(80);
+		size_t numParticles = particles.size();
+		const ofPixels & vpix = colorImg.getPixels();
 
-			for (size_t i = 0; i < numParticles; i++) {
-				auto & particle = particles[i];
-				int samplex = particle.pos.x;
-				if (bMirror) {
-					samplex = colorImg.getWidth() - samplex;
-				}
-				if (particle.pos.x < 0 || particle.pos.x > WIN_W || particle.pos.y < 0 || particle.pos.y > WIN_H) {
-                    continue;
-				}
-				ofFloatColor vcolor = vpix.getColor(samplex, particle.pos.y);
-				ofFloatColor color(1, 1, 1, 1);
-				color = vcolor;
-				ofSetColor(color);
-				ofPushMatrix();
+		for (size_t i = 0; i < numParticles; i++) {
+			auto & particle = particles[i];
+			int samplex = particle.pos.x;
 
-				float xmult = WIN_W / colorImg.getWidth();
-				float ymult = WIN_H / colorImg.getHeight();
-
-				float psize = particle.size * particle_size * (vcolor.getBrightness() * 0.8f + 0.2f);
-	
-                float distorsion = sin(ofGetElapsedTimef() * dist_freq + particle.pos.y * 0.1) * sine_distorsion;
-
-				ofTranslate(particle.pos.x * xmult + distorsion, particle.pos.y * ymult);
-				ofDrawCircle(0, 0, psize);
-				ofPopMatrix();
+			if (bMirror) {
+				samplex = colorImg.getWidth() - samplex;
 			}
+
+			if (particle.pos.x < 0 || particle.pos.x > WIN_W || particle.pos.y < 0 || particle.pos.y > WIN_H) {
+				continue;
+			}
+
+			ofFloatColor vcolor = vpix.getColor(samplex, particle.pos.y);
+			ofFloatColor color(1, 1, 1, 1);
+			color = vcolor;
+			ofSetColor(color);
+			ofPushMatrix();
+
+			float xmult = WIN_W / colorImg.getWidth();
+			float ymult = WIN_H / colorImg.getHeight();
+
+			float psize = particle.size * particle_size * (vcolor.getBrightness() * 0.8f + 0.2f);
+
+			float distorsion = sin(ofGetElapsedTimef() * dist_freq + particle.pos.y * 0.1) * sine_distorsion;
+
+			ofTranslate(particle.pos.x * xmult + distorsion, particle.pos.y * ymult);
+			ofDrawCircle(0, 0, psize);
+			ofPopMatrix();
+		}
 	}
 
-    // draw a circle in the center of the screen
-    ofSetColor(circleColor);
-    ofDrawCircle(ofGetWidth() / 2.0, ofGetHeight() / 2.0, 16);
+	// draw a circle in the center of the screen
+	ofSetColor(circleColor);
+	ofDrawCircle(ofGetWidth() / 2.0, ofGetHeight() / 2.0, 16);
 
 	ofDrawBitmapStringHighlight(ofToString(ofGetFrameRate()), ofGetWidth() / 2, 20);
 
 	ofSetColor(bgColor);
-    uiManager.draw();
+	uiManager.draw();
 }
 
 //--------------------------------------------------------------
@@ -276,8 +274,8 @@ glm::vec2 ofApp::getOpticalFlowValueForPercent(float xpct, float ypct) {
 	if (ty < 0) ty = 0;
 
 	const cv::Point2f & fxy = flowMat.at<cv::Point2f>(ty, tx);
-	
-    flowVector = glm::vec2(fxy.x, fxy.y);
+
+	flowVector = glm::vec2(fxy.x, fxy.y);
 	if (glm::length2(flowVector) > minLengthSquared) {
 		return flowVector;
 	}
@@ -312,11 +310,11 @@ void ofApp::keyPressed(int key) {
 		break;
 	case 'p':
 		particle_size += 0.1;
-	    particle_size > 40.0 ? particle_size = 40.0 : particle_size;
-        break;
+		particle_size > 40.0 ? particle_size = 40.0 : particle_size;
+		break;
 	case 'o':
 		particle_size -= 0.1;
-        particle_size < 0.01 ? particle_size = 0.01 : particle_size;
+		particle_size < 0.01 ? particle_size = 0.01 : particle_size;
 		break;
 	case ' ':
 		break;

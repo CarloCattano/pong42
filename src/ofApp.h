@@ -10,13 +10,14 @@
 
 class Particle {
 public:
-	glm::vec2   pos = { 0, 0 };
-	glm::vec2   basePos = { 0, 0 };
-	glm::vec2   vel = { 0, 0 };
+	glm::vec2           pos = { 0, 0 };
+	glm::vec2           basePos = { 0, 0 };
+	glm::vec2           vel = { 0, 0 };
 
-	float       size = 30.0;
-	float       timeNotTouched = 0.0f;
-	bool        bAtBasePos = false;
+	float               size = 30.0;
+	float               timeNotTouched = 0.0f;
+	bool                bAtBasePos = false;
+    std::vector<int> neighbors;  // Add this to store neighbor indices
 };
 
 
@@ -32,7 +33,7 @@ public:
 
 	void windowResized(int w, int h);
 #ifdef _USE_LIVE_VIDEO
-	ofVideoGrabber vidGrabber;
+	ofVideoGrabber cam;
 #else
 	ofVideoPlayer vidPlayer;
 #endif
@@ -65,6 +66,7 @@ private:
 	float   dist_freq;
     ofColor bgColor;
 
+    void calculateNeighbors();
 	void generateParticles(int w, int h);
 
 	void spacingChanged(int & spacing);
