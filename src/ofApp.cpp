@@ -21,8 +21,6 @@ void ofApp::setup() {
 	vidPlayer.setLoopState(OF_LOOP_NORMAL);
 #endif
 
-    getMotion = true;
-
     bgColor = ofColor(0, 0, 0, 255);
 
 	blurAmount = 5;
@@ -113,31 +111,6 @@ void ofApp::update() {
 		colorImg.setFromPixels(vidPlayer.getPixels());
 #endif
 
-        if(getMotion) {
-	    	previousImage.resize(currentImage.getWidth(), currentImage.getHeight());
-	    	diffImage.absDiff(currentImage, previousImage);
-	    	diffImage.threshold(10);
-	    	
-            motionAmount = diffImage.countNonZeroInRegion(0, 0, diffImage.getWidth(), diffImage.getHeight());
-
-	    	ofPixels & pixels = diffImage.getPixels();
-
-            std::pair<int, int>                 pos;
-            std::map<std::pair<int,int>, int>   normals;
-       	
-            for (int y = 0; y < diffImage.getWidth(); y++) {
-	    		for (int x = 0; x < diffImage.getHeight(); x++) {
-	                pos = std::make_pair(x, y);
-                    if (pixels.getColor(x, y).getBrightness() > 170) {
-	    				ofVec2f normal(x / (float)diffImage.getWidth(), y / (float)diffImage.getHeight());
-                        normals[pos] = 1;
-                    } else 
-                        normals[pos] = 0;
-	    		}
-	    	}
-            previousImage = currentImage.getPixels();
-	    	//-----------------------------------------------------------------
-        }
 		grayImage = colorImg;
 
 		if (bMirror) {
@@ -223,10 +196,8 @@ void ofApp::update() {
             bgColor = ofColor(255, 0, 0, 255);
         else if(averageFlow.y > 0.3 && averageFlow.x < 0.1 && averageFlow.x > -0.1)
         {
-        
-            string name = "screenshot_" + ofGetTimestampString() + ".png";
-            ofSaveImage(colorImg.getPixels(), name);
-
+            /*string name = "screenshot_" + ofGetTimestampString() + ".png";*/
+            /*ofSaveImage(colorImg.getPixels(), name);*/
             bgColor = ofColor(0, 0, 0, 255);
         }
         else if (averageFlow.y < -0.3 && averageFlow.x < 0.1 && averageFlow.x > -0.1)
@@ -272,10 +243,6 @@ void ofApp::draw() {
 				ofPopMatrix();
 			}
 	}
-
-    if (getMotion) {
-        /*diffImage.draw(0, 0, colorImg.getWidth(), colorImg.getHeight());*/
-    }
 
     // draw a circle in the center of the screen
     ofSetColor(circleColor);
