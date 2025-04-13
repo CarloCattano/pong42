@@ -2,6 +2,7 @@ bin/
 .compiler_flags
 *.d
 *.o
+*.so
 *.idx
 *.png
 *.jpg
