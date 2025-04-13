@@ -1,35 +1,83 @@
 #include "ofApp.h"
+#include "Player.hpp"
 #include "fwd.hpp"
 #include "ofAppRunner.h"
+#include "ofUtils.h"
 
-//--------------------------------------------------------------
+ofxCvGrayscaleImage		depthOrig;
+ofxCvGrayscaleImage		depthProcessed;
+ofxCvContourFinder		depthContours;
+
+ofxCvColorImage			colorImageRGB;
+
+
 void ofApp::setup() {
-
-	particle_size = 1.0f;
-
 	WIN_W = ofGetWidth();
 	WIN_H = ofGetHeight();
 
-	ofSetFrameRate(60);
-
-#ifdef _USE_LIVE_VIDEO
-	cam.setVerbose(true);
-	cam.setup(320, 240);
-#else
-	vidPlayer.load("Hand3s.mp4");
-	vidPlayer.play();
-	vidPlayer.setLoopState(OF_LOOP_NORMAL);
-#endif
+	ofSetWindowShape(WIN_W, WIN_H);
+	ofSetFrameRate(30);
+	ofEnableAlphaBlending();
+	ofSetWindowTitle("OpticalFlowYo!");
+	ofBackground(bgColor);
 
 	bgColor = ofColor(0, 0, 0, 255);
 
-	blurAmount = 5;
+	particle_size = 2.0f;
+	spacing = 8;
+
+	flowSensitivity = 0.24f;
+	blurAmount = 1;
 	bMirror = true;
-	cvDownScale = 12;
-	bContrastStretch = false;
+	cvDownScale = 16;
+	bContrastStretch = true;
 
 	// store a minimum squared value to apply flow velocity
 	minLengthSquared = 0.5 * 0.5; // 0.5 pixel squared
+
+	player1 = Player(ofVec2f(40, 120), ofVec2f(24, 224));
+	player2 = Player(ofVec2f(WIN_W - 40, WIN_H / 2.0), ofVec2f(24, 224));
+
+	player1.playerAI = false;
+	player2.playerAI = false;
+
+	ofTrueTypeFont::setGlobalDpi(72); // Default is 96, but results in larger than normal pt size.
+	scoreBoard.load(ofToDataPath("verdana.ttf"), 42, true, true); // filename via ofToDataPath, point size, antialiased?, full char-set?
+	scoreBoard.setLineHeight(28.0); // Default is based on font size.
+	scoreBoard.setLetterSpacing(1.05); // Default is based on font size.
+
+	fpsFont.load(ofToDataPath("verdana.ttf"), 22, true, true);
+
+#ifdef ASCII
+	font.load("Courier New Bold.ttf", 24);
+	font.setLineHeight(1);
+	font.setLetterSpacing(1);
+
+	// this set of characters comes from the Ascii Video Processing example by Ben Fry,
+	// changed order slightly to work better for mapping
+	asciiCharacters = string(" .,;+<>~=%&)/){}][#$");
+#endif
+
+#ifdef JOYSTICK
+	joy_.setup(GLFW_JOYSTICK_2);
+#endif
+
+	cam.setVerbose(true);
+	cam.setup(640, 480);
+	sourceWidth = cam.getWidth();
+	sourceHeight = cam.getHeight();
+
+	// cam.init();
+	// cam.enableDepthNearValueWhite(true);
+	// cam.open();
+
+	depthOrig.allocate(cam.getWidth(), cam.getHeight());
+	depthProcessed.allocate(cam.getWidth(), cam.getHeight());
+
+	sourceWidth = cam.getWidth();
+	sourceHeight = cam.getHeight();
+
+	colorImg.allocate(cam.getWidth(), cam.getHeight());
 
 	uiManager.spacing_s.addListener(this, &ofApp::spacingChanged);
 	uiManager.particle_size_s.addListener(this, &ofApp::particleSizeChanged);
@@ -37,8 +85,6 @@ void ofApp::setup() {
 	uiManager.dist_freq_s.addListener(this, &ofApp::distFreqChanged);
 
 	uiManager.setup();
-
-	ofSetWindowTitle("OpticalFlowYo!");
 }
 
 void ofApp::generateParticles(int s_witdth, int s_height) {
@@ -48,7 +94,7 @@ void ofApp::generateParticles(int s_witdth, int s_height) {
 	int numx = s_witdth / spacing;
 	int numy = s_height / spacing;
 
-	float delta = 0.5f;
+	float delta = 1.0f;
 
 	for (int x = 0; x < numx; x++) {
 		for (int y = 0; y < numy; y++) {
@@ -61,34 +107,29 @@ void ofApp::generateParticles(int s_witdth, int s_height) {
 			particle.basePos = particle.pos;
 			particles.push_back(particle);
 		}
+		ofLogNotice() << "Particles generated: " << particles.size();
 	}
 }
 
-ofColor circleColor = ofColor(255, 0, 0, 255);
+//-----------------------------------------------------------------------------------------------------------
 
-//--------------------------------------------------------------
 void ofApp::update() {
-	ofBackground(bgColor);
 
 	bool bNewFrame = false;
-	int sourceWidth = cam.getWidth();
-	int sourceHeight = cam.getHeight();
 
-#ifdef _USE_LIVE_VIDEO
 	cam.update();
 	bNewFrame = cam.isFrameNew();
-	sourceWidth = cam.getWidth();
-	sourceHeight = cam.getHeight();
-#else
-	vidPlayer.update();
-	bNewFrame = vidPlayer.isFrameNew();
-	sourceWidth = vidPlayer.getWidth();
-	sourceHeight = vidPlayer.getHeight();
-#endif
+
+	cam.update();
+	colorImageRGB			= cam.getPixels();
+	depthOrig = cam.getPixels();
+
 
 	int scaledWidth = sourceWidth / cvDownScale;
 	int scaledHeight = sourceHeight / cvDownScale;
 
+	previousMat = cv::Mat(scaledHeight, scaledWidth, CV_8UC1);
+	flowMat = cv::Mat(scaledHeight, scaledWidth, CV_32FC2);
 	if (currentImage.getWidth() != scaledWidth || currentImage.getHeight() != scaledHeight) {
 		currentImage.clear();
 		currentImage.allocate(scaledWidth, scaledHeight);
@@ -99,33 +140,24 @@ void ofApp::update() {
 		flowMat = cv::Mat(scaledHeight, scaledWidth, CV_32FC2);
 
 		ofSetWindowShape(WIN_W, WIN_H);
-
 		generateParticles(sourceWidth, sourceHeight);
 	}
 
 	if (bNewFrame) {
 
-#ifdef _USE_LIVE_VIDEO
 		colorImg.setFromPixels(cam.getPixels());
-#else
-		colorImg.setFromPixels(vidPlayer.getPixels());
-#endif
-
 		grayImage = colorImg;
 
-		if (bMirror) {
+		if (bMirror)
 			grayImage.mirror(false, true);
-		}
 
 		currentImage.scaleIntoMe(grayImage);
 
-		if (bContrastStretch) {
+		if (bContrastStretch)
 			currentImage.contrastStretch();
-		}
 
-		if (blurAmount > 0) {
+		if (blurAmount > 0)
 			currentImage.blurGaussian(blurAmount);
-		}
 
 		cv::Mat currentMat = currentImage.getCvMat();
 		cv::calcOpticalFlowFarneback(previousMat,
@@ -133,42 +165,39 @@ void ofApp::update() {
 			flowMat,
 			0.5, // pyr_scale
 			4, // levels
-			16, // winsize
+			4, // winsize
 			2, // iterations
-			7, // poly_n
-			1.5, // poly_sigma
+			4, // poly_n
+			1.2, // poly_sigma
 			cv::OPTFLOW_FARNEBACK_GAUSSIAN);
 
 		currentMat.copyTo(previousMat);
 	}
 
+#ifdef PARTICLES
 	float deltaTime = ofClamp(ofGetLastFrameTime(), 1.f / 5000.f, 1.f / 5.f);
-
-	glm::vec2 centerForce = getOpticalFlowValueForPercent(0.5, 0.5);
-
-	if (centerForce.x > 0.2) {
-		circleColor = ofColor(0, 255, 0, 255);
-		sine_distorsion = 4;
-
-	} else if (centerForce.x < -0.2) {
-		circleColor = ofColor(255, 0, 0, 255);
-		sine_distorsion = 0;
-	}
-
+#endif
 	size_t numParticles = particles.size();
 
-	glm::vec2 averageFlow(0, 0);
+	glm::vec2 leftFlowVector(0, 0);
+	glm::vec2 rightFlowVector(0, 0);
 
 	for (size_t i = 0; i < numParticles; i++) {
 		auto & particle = particles[i];
 		float percentX = particle.pos.x / sourceWidth;
 		float percentY = particle.pos.y / sourceHeight;
 		glm::vec2 flowForce = getOpticalFlowValueForPercent(percentX, percentY);
+
+		if (particle.pos.x + particle.size < sourceWidth / 2.0)
+			leftFlowVector += flowForce;
+		else
+			rightFlowVector += flowForce;
+
+#ifdef PARTICLES
 		float len2 = glm::length2(flowForce);
-		averageFlow += flowForce;
 		particle.vel /= 1.f + deltaTime;
 		if (len2 > minLengthSquared) {
-			particle.vel += flowForce * (30.0f * deltaTime);
+			particle.vel += flowForce * (20.0f * deltaTime);
 			if (particle.bAtBasePos) {
 				particle.timeNotTouched = 0.0f;
 			}
@@ -186,28 +215,63 @@ void ofApp::update() {
 			particle.bAtBasePos = true;
 		}
 		particle.pos += particle.vel * (10.0f * deltaTime);
+#endif
 	}
 
-	averageFlow /= numParticles;
+	leftFlowVector /= numParticles / 2;
+	rightFlowVector /= numParticles / 2;
 
-	if (averageFlow.x > 0.3 && averageFlow.y < 0.1 && averageFlow.y > -0.1)
-		bgColor = ofColor(0, 255, 0, 255);
-	else if (averageFlow.x < -0.3 && averageFlow.y < 0.1 && averageFlow.y > -0.1)
-		bgColor = ofColor(255, 0, 0, 255);
-	else if (averageFlow.y > 0.3 && averageFlow.x < 0.1 && averageFlow.x > -0.1) {
-		bgColor = ofColor(0, 0, 0, 255);
-	} else if (averageFlow.y < -0.3 && averageFlow.x < 0.1 && averageFlow.x > -0.1)
-		bgColor = ofColor(255, 255, 255, 255);
-	else
-		bgColor = ofColor(0, 0, 0, 255);
+	if (leftFlowVector.x > flowSensitivity)
+		player1.move(ofVec2f(0, 4));
+
+	else if (leftFlowVector.x < -flowSensitivity)
+		player1.move(ofVec2f(0, -4));
+
+	if (rightFlowVector.x > flowSensitivity)
+		player2.move(ofVec2f(0, -4));
+
+	else if (rightFlowVector.x < -flowSensitivity)
+		player2.move(ofVec2f(0, 4));
+
+	player1.update();
+	player2.update();
+
+#ifdef JOYSTICK
+	if (joy_.getAxis(1) < -0.5)
+		player1.move(ofVec2f(0, -7));
+	else if (joy_.getAxis(1) > 0.5)
+		player1.move(ofVec2f(0, 7));
+
+#endif
+
+	collision();
+
+	if (player1.playerAI) {
+		if (ofGetFrameNum() % (int)ofRandom(2, 7) == 0) {
+			player1.direction.y += ofRandom(-8, 8);
+			player2.move(player1.direction);
+		} else
+			player1.chaseBall(ball.pos);
+	}
+	if (player2.playerAI) {
+		if (ofGetFrameNum() % (int)ofRandom(2, 7) == 0) {
+			player2.direction.y += ofRandom(-8, 8);
+			player2.move(player2.direction);
+		} else
+			player2.chaseBall(ball.pos);
+	}
 }
 
+//-----------------------------------------------------------------------------------------------------------
+
 void ofApp::draw() {
+
 	ofBackgroundGradient(ofColor(0), bgColor);
 	ofSetColor(255);
 
+#ifdef PARTICLES
 	if (grayImage.bAllocated) {
-		ofSetColor(80);
+
 		size_t numParticles = particles.size();
 		const ofPixels & vpix = colorImg.getPixels();
 
@@ -215,9 +279,8 @@ void ofApp::draw() {
 			auto & particle = particles[i];
 			int samplex = particle.pos.x;
 
-			if (bMirror) {
+			if (bMirror)
 				samplex = colorImg.getWidth() - samplex;
-			}
 
 			if (particle.pos.x < 0 || particle.pos.x > WIN_W || particle.pos.y < 0 || particle.pos.y > WIN_H) {
 				continue;
@@ -234,25 +297,58 @@ void ofApp::draw() {
 
 			float psize = particle.size * particle_size * (vcolor.getBrightness() * 0.8f + 0.2f);
 
-			float distorsion = sin(ofGetElapsedTimef() * dist_freq + particle.pos.y * 0.1) * sine_distorsion;
-
-			ofTranslate(particle.pos.x * xmult + distorsion, particle.pos.y * ymult);
+			ofTranslate(particle.pos.x * xmult, particle.pos.y * ymult);
 			ofDrawCircle(0, 0, psize);
 			ofPopMatrix();
 		}
 	}
+#endif
 
-	// draw a circle in the center of the screen
-	ofSetColor(circleColor);
-	ofDrawCircle(ofGetWidth() / 2.0, ofGetHeight() / 2.0, 16);
+#ifdef ASCII
+	ofPixelsRef pixelsRef = colorImg.getPixels();
+	ofSetHexColor(0xffffff);
 
-	ofDrawBitmapStringHighlight(ofToString(ofGetFrameRate()), ofGetWidth() / 2, 20);
+	int div = 6;
+
+	for (int i = 0; i < cam.getWidth(); i += div) {
+		for (int j = 0; j < cam.getHeight(); j += div) {
+			float lightness = pixelsRef.getColor(i, j).getLightness();
+
+			int x = ofMap(i, 0, cam.getWidth(), 0, WIN_W);
+			int y = ofMap(j, 0, cam.getHeight(), 0, WIN_H);
+
+			int character = powf(ofMap(lightness * 1.1, 0, 255, 0, 1), 4) * asciiCharacters.size();
+
+			ofSetColor(cam.getPixels().getColor(i, j));
+			font.drawString(ofToString(asciiCharacters[character]), x, y);
+		}
+	}
+#endif
+	ball.draw();
+	player1.draw();
+	player2.draw();
+
+	ball.move(player1, player2);
+	colorImageRGB.draw(0, 0, ofGetWidth() / 4, ofGetHeight() / 4 );
+	ofColor(255, 255, 255);
+	cam.draw(242, 42, WIN_W / 6.0, WIN_H / 6.0);
+
+
+	ofSetColor(255, 255, 255);
+	scoreBoard.drawString("SCORE : " + ofToString(player1.score) + " | " + ofToString(player2.score), WIN_W / 3.0, 40);
+
+	ofSetColor(25, 200, 111);
+	fpsFont.drawString(ofToString((int)ofGetFrameRate()) + " FPS", WIN_W / 1.2, 30);
 
 	ofSetColor(bgColor);
+
+#ifdef UI
 	uiManager.draw();
+#endif
 }
 
-//--------------------------------------------------------------
+//-----------------------------------------------------------------------------------------------------------
+
 glm::vec2 ofApp::getOpticalFlowValueForPercent(float xpct, float ypct) {
 	glm::vec2 flowVector(0, 0);
 
@@ -282,7 +378,19 @@ glm::vec2 ofApp::getOpticalFlowValueForPercent(float xpct, float ypct) {
 	return glm::vec2(0.0, 0.0);
 }
 
-//--------------------------------------------------------------
+void ofApp::collision() {
+	// Check collision with player1
+	if (ball.pos.x - ball.size.x / 2 < player1.pos.x + player1.size.x / 2 && ball.pos.x + ball.size.x / 2 > player1.pos.x - player1.size.x / 2 && ball.pos.y - ball.size.y / 2 < player1.pos.y + player1.size.y / 2 && ball.pos.y + ball.size.y / 2 > player1.pos.y - player1.size.y / 2) {
+		ball.dir.x *= -1;
+	}
+
+	// Check collision with player2 (if player2 is implemented)
+	if (ball.pos.x - ball.size.x / 2 < player2.pos.x + player2.size.x / 2 && ball.pos.x + ball.size.x / 2 > player2.pos.x - player2.size.x / 2 && ball.pos.y - ball.size.y / 2 < player2.pos.y + player2.size.y / 2 && ball.pos.y + ball.size.y / 2 > player2.pos.y - player2.size.y / 2) {
+		ball.dir.x *= -1;
+	}
+}
+
+//-----------------------------------------------------------------------------------------------------------
 void ofApp::keyPressed(int key) {
 	switch (key) {
 	case OF_KEY_UP:
@@ -294,19 +402,13 @@ void ofApp::keyPressed(int key) {
 			cvDownScale = 2;
 		}
 		break;
-	case 'm':
-		bMirror = !bMirror;
+	case 's':
+		spacing += 1;
+		spacingChanged(spacing);
 		break;
-	case 'c':
-		bContrastStretch = !bContrastStretch;
-		break;
-	case OF_KEY_RIGHT:
-		blurAmount++;
-		if (blurAmount > 255) blurAmount = 255;
-		break;
-	case OF_KEY_LEFT:
-		blurAmount--;
-		if (blurAmount < 0) blurAmount = 0;
+	case 'a':
+		spacing -= 1;
+		spacingChanged(spacing);
 		break;
 	case 'p':
 		particle_size += 0.1;
@@ -321,7 +423,8 @@ void ofApp::keyPressed(int key) {
 	}
 }
 
-//--------------------------------------------------------------
+//-----------------------------------------------------------------------------------------------------------
+
 void ofApp::windowResized(int w, int h) {
 	WIN_W = w;
 	WIN_H = h;
@@ -329,7 +432,7 @@ void ofApp::windowResized(int w, int h) {
 
 void ofApp::spacingChanged(int & spacing) {
 	this->spacing = spacing;
-	generateParticles(ofGetWidth(), ofGetHeight());
+	generateParticles(WIN_W, WIN_H);
 }
 
 void ofApp::particleSizeChanged(float & particle_size) {
