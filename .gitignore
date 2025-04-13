@@ -5,4 +5,6 @@ bin/
 *.idx
 *.png
 *.jpg
-
+.cache/
+.vscode/
+obj/
