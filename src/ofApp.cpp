@@ -255,28 +255,29 @@ void ofApp::draw() {
 		for (size_t i = 0; i < numParticles; i++) {
 			auto & particle = particles[i];
 			int samplex = particle.pos.x;
+	if (bMirror)
+		samplex = colorImg.getWidth() - samplex;
 
-			if (bMirror)
-				samplex = colorImg.getWidth() - samplex;
+	int sampley = particle.pos.y;
 
-			if (particle.pos.x < 0 || particle.pos.x > WIN_W || particle.pos.y < 0 || particle.pos.y > WIN_H) {
-				continue;
-			}
+	if (samplex >= 0 && samplex < vpix.getWidth() &&
+		sampley >= 0 && sampley < vpix.getHeight()) {
 
-			ofFloatColor vcolor = vpix.getColor(samplex, particle.pos.y);
-			ofFloatColor color(1, 1, 1, 1);
-			color = vcolor;
-			ofSetColor(color);
-			ofPushMatrix();
+		ofFloatColor vcolor = vpix.getColor(samplex, sampley);
+		ofFloatColor color(1, 1, 1, 1);
+		color = vcolor;
+		ofSetColor(color);
+		ofPushMatrix();
 
-			float xmult = WIN_W / colorImg.getWidth();
-			float ymult = WIN_H / colorImg.getHeight();
+		float xmult = WIN_W / colorImg.getWidth();
+		float ymult = WIN_H / colorImg.getHeight();
 
-			float psize = particle.size * particle_size * (vcolor.getBrightness() * 0.8f + 0.2f);
+		float psize = particle.size * particle_size * (vcolor.getBrightness() * 0.8f + 0.2f);
 
-			ofTranslate(particle.pos.x * xmult, particle.pos.y * ymult);
-			ofDrawCircle(0, 0, psize);
-			ofPopMatrix();
+		ofTranslate(particle.pos.x * xmult, particle.pos.y * ymult);
+		ofDrawCircle(0, 0, psize);
+		ofPopMatrix();
+	}
 		}
 	}
 #endif
