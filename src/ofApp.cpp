@@ -65,11 +65,11 @@ void ofApp::setup() {
 	uiManager.setup();
 }
 
-void ofApp::generateParticles(int s_witdth, int s_height) {
+void ofApp::generateParticles(int s_width, int s_height) {
 
 	particles.clear();
 
-	int numx = s_witdth / spacing;
+	int numx = s_width / spacing;
 	int numy = s_height / spacing;
 
 	float delta = 1.0f;
