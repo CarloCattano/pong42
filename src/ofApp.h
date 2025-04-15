@@ -8,18 +8,8 @@
 #include "ofxGui.h"
 #include "ofxOpenCv.h"
 
-/*#define JOYSTICK*/
-
 #define PARTICLES
-#define UI
-
-#ifdef JOYSTICK
-	#include "ofxJoystick.h"
-#endif
-
-// #define KINECT
-
-#define _USE_LIVE_VIDEO
+// #define UI
 
 class Particle {
 public:
@@ -44,15 +34,7 @@ public:
 
 	void windowResized(int w, int h);
 
-#ifdef KINECT
-	ofxKinect cam;
-#endif
-
-#ifdef _USE_LIVE_VIDEO
 	ofVideoGrabber cam;
-#else
-	//ofVideoPlayer vidPlayer;
-#endif
 
 	ofxCvColorImage colorImg;
 	ofxCvGrayscaleImage grayImage;
@@ -64,22 +46,21 @@ public:
 
 	vector<Particle> particles;
 
-	int blurAmount;
 	bool bMirror;
-	float cvDownScale;
 	bool bContrastStretch;
-	float minLengthSquared;
 	bool bDrawOptiFlowVectors;
+
+	float cvDownScale;
+	float minLengthSquared;
+
 	int mode;
+	int blurAmount;
 	int spacing;
 
 	Player player1;
 	Player player2;
 
 	Ball ball;
-
-	ofVec2f player1flow;
-	ofVec2f player2flow;
 
 	ofTrueTypeFont scoreBoard;
 
@@ -98,8 +79,8 @@ private:
 	void calculateNeighbors();
 	void generateParticles(int w, int h);
 
-	void spacingChanged(int & spacing);
-	void particleSizeChanged(float & particle_size);
+	void spacingChanged(int &spacing);
+	void particleSizeChanged(float &particle_size);
 
 	void collision();
 
@@ -107,7 +88,4 @@ private:
 	int sourceHeight;
 
 	UIManager uiManager;
-#ifdef JOYSTICK
-	ofxJoystick joy_;
-#endif
 };

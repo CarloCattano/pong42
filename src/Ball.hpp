@@ -3,7 +3,6 @@
 #include "ofMain.h"
 
 class Ball {
-
 public:
 	int score;
 	int speed;
@@ -11,9 +10,9 @@ public:
 	ofVec2f size;
 	ofVec2f dir;
 
-	void move(Player & player1, Player & player2);
+	void move(Player &player1, Player &player2);
 	void draw();
-	bool collide(const Player & player);
+	bool collide(const Player &player);
 	Ball();
 	~Ball();
 };

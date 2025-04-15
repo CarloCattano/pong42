@@ -5,7 +5,7 @@ Player::Player(ofVec2f pos, ofVec2f size) {
 	this->pos = pos;
 	this->size = size;
 	this->score = 0;
-	this->speed = 5.0;
+	this->speed = 4.0;
 	this->direction = ofVec2f(0, 1);
 }
 
@@ -14,7 +14,8 @@ Player::Player() {
 	this->size = ofVec2f(0, 0);
 }
 
-Player::~Player() { }
+Player::~Player() {
+}
 
 void Player::update() {
 	move(this->direction);
@@ -34,14 +35,6 @@ void Player::move(ofVec2f dir) {
 
 ofVec2f Player::getDirection() {
 	return direction;
-}
-
-void Player::chaseBall(ofVec2f ballPos) {
-	if (ballPos.y > pos.y) {
-		move(ofVec2f(0, ofRandom(1, 6)));
-	} else if (ballPos.y < pos.y) {
-		move(ofVec2f(0, ofRandom(-6, -1)));
-	}
 }
 
 void Player::draw() {

@@ -9,3 +9,4 @@ bin/
 .cache/
 .vscode/
 obj/
+compile_commands.json

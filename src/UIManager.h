@@ -4,10 +4,10 @@
 
 class UIManager {
 public:
-    void setup();
-    void draw();
+	void setup();
+	void draw();
 
-    ofxPanel gui;
-    ofxIntSlider spacing_s;
-    ofxFloatSlider particle_size_s;
+	ofxPanel gui;
+	ofxIntSlider spacing_s;
+	ofxFloatSlider particle_size_s;
 };

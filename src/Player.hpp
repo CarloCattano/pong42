@@ -2,7 +2,6 @@
 #include "ofMain.h"
 
 class Player {
-
 public:
 	int score;
 	float speed;
@@ -18,8 +17,6 @@ public:
 	void update();
 
 	ofVec2f getDirection();
-
-	void chaseBall(ofVec2f ballPos);
 
 	Player();
 	~Player();
