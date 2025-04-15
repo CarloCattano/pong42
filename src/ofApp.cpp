@@ -48,41 +48,19 @@ void ofApp::setup() {
 
 	fpsFont.load(ofToDataPath("verdana.ttf"), 22, true, true);
 
-#ifdef ASCII
-	font.load("Courier New Bold.ttf", 24);
-	font.setLineHeight(1);
-	font.setLetterSpacing(1);
-
-	// this set of characters comes from the Ascii Video Processing example by Ben Fry,
-	// changed order slightly to work better for mapping
-	asciiCharacters = string(" .,;+<>~=%&)/){}][#$");
-#endif
-
-#ifdef JOYSTICK
-	joy_.setup(GLFW_JOYSTICK_2);
-#endif
-
 	cam.setVerbose(true);
-	cam.setup(640, 480);
-	sourceWidth = cam.getWidth();
-	sourceHeight = cam.getHeight();
-
-	// cam.init();
-	// cam.enableDepthNearValueWhite(true);
-	// cam.open();
-
-	depthOrig.allocate(cam.getWidth(), cam.getHeight());
-	depthProcessed.allocate(cam.getWidth(), cam.getHeight());
+	cam.setup(1280, 720);
 
 	sourceWidth = cam.getWidth();
 	sourceHeight = cam.getHeight();
 
-	colorImg.allocate(cam.getWidth(), cam.getHeight());
+	depthOrig.allocate(sourceWidth, sourceHeight);
+	depthProcessed.allocate(sourceWidth, sourceHeight);
+
+	colorImg.allocate(sourceWidth, sourceHeight);
 
 	uiManager.spacing_s.addListener(this, &ofApp::spacingChanged);
 	uiManager.particle_size_s.addListener(this, &ofApp::particleSizeChanged);
-	uiManager.sine_distorsion_s.addListener(this, &ofApp::sineDistorsionChanged);
-	uiManager.dist_freq_s.addListener(this, &ofApp::distFreqChanged);
 
 	uiManager.setup();
 }
@@ -120,17 +98,16 @@ void ofApp::update() {
 	cam.update();
 	bNewFrame = cam.isFrameNew();
 
-	cam.update();
 	colorImageRGB			= cam.getPixels();
-	depthOrig = cam.getPixels();
+	depthOrig = colorImageRGB;
 
 
 	int scaledWidth = sourceWidth / cvDownScale;
 	int scaledHeight = sourceHeight / cvDownScale;
 
-	previousMat = cv::Mat(scaledHeight, scaledWidth, CV_8UC1);
-	flowMat = cv::Mat(scaledHeight, scaledWidth, CV_32FC2);
 	if (currentImage.getWidth() != scaledWidth || currentImage.getHeight() != scaledHeight) {
+		previousMat = cv::Mat(scaledHeight, scaledWidth, CV_8UC1);
+		flowMat = cv::Mat(scaledHeight, scaledWidth, CV_32FC2);
 		currentImage.clear();
 		currentImage.allocate(scaledWidth, scaledHeight);
 		currentImage.set(0);
@@ -304,32 +281,12 @@ void ofApp::draw() {
 	}
 #endif
 
-#ifdef ASCII
-	ofPixelsRef pixelsRef = colorImg.getPixels();
-	ofSetHexColor(0xffffff);
-
-	int div = 6;
-
-	for (int i = 0; i < cam.getWidth(); i += div) {
-		for (int j = 0; j < cam.getHeight(); j += div) {
-			float lightness = pixelsRef.getColor(i, j).getLightness();
-
-			int x = ofMap(i, 0, cam.getWidth(), 0, WIN_W);
-			int y = ofMap(j, 0, cam.getHeight(), 0, WIN_H);
-
-			int character = powf(ofMap(lightness * 1.1, 0, 255, 0, 1), 4) * asciiCharacters.size();
-
-			ofSetColor(cam.getPixels().getColor(i, j));
-			font.drawString(ofToString(asciiCharacters[character]), x, y);
-		}
-	}
-#endif
 	ball.draw();
 	player1.draw();
 	player2.draw();
 
 	ball.move(player1, player2);
-	colorImageRGB.draw(0, 0, ofGetWidth() / 4, ofGetHeight() / 4 );
+	//colorImageRGB.draw(0, 0, ofGetWidth() / 4, ofGetHeight() / 4 );
 	ofColor(255, 255, 255);
 	cam.draw(242, 42, WIN_W / 6.0, WIN_H / 6.0);
 
@@ -428,6 +385,9 @@ void ofApp::keyPressed(int key) {
 void ofApp::windowResized(int w, int h) {
 	WIN_W = w;
 	WIN_H = h;
+
+
+	ofSetWindowShape(WIN_W, WIN_H);
 }
 
 void ofApp::spacingChanged(int & spacing) {
@@ -439,10 +399,3 @@ void ofApp::particleSizeChanged(float & particle_size) {
 	this->particle_size = particle_size;
 }
 
-void ofApp::sineDistorsionChanged(int & sine_distorsion) {
-	this->sine_distorsion = sine_distorsion;
-}
-
-void ofApp::distFreqChanged(float & dist_freq) {
-	this->dist_freq = dist_freq;
-}

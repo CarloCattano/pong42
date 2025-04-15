@@ -9,7 +9,6 @@
 #include "ofxOpenCv.h"
 
 /*#define JOYSTICK*/
-/*#define ASCII*/
 
 #define PARTICLES
 #define UI
@@ -85,17 +84,13 @@ public:
 	ofTrueTypeFont scoreBoard;
 
 private:
-	unsigned short int WIN_W;
 	unsigned short int WIN_H;
+	unsigned short int WIN_W;
 
 	float particle_size;
-	int sine_distorsion;
-	float dist_freq;
 	ofColor bgColor;
 
 	float flowSensitivity;
-
-	string asciiCharacters;
 
 	ofTrueTypeFont font;
 	ofTrueTypeFont fpsFont;
@@ -105,8 +100,6 @@ private:
 
 	void spacingChanged(int & spacing);
 	void particleSizeChanged(float & particle_size);
-	void sineDistorsionChanged(int & sine_distorsion);
-	void distFreqChanged(float & dist_freq);
 
 	void collision();
 
