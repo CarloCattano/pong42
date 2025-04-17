@@ -67,6 +67,10 @@ public:
 	ofxPostProcessing post;
 	ZoomBlurPass *zoomBlur;
 
+	ofShader asciiShader;
+	ofFbo particlesFbo;
+	ofTexture asciiAtlas;
+
 private:
 	unsigned short int WIN_H;
 	unsigned short int WIN_W;

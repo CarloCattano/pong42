@@ -13,6 +13,10 @@ void ofApp::setup() {
 	WIN_W = ofGetWidth();
 	WIN_H = ofGetHeight();
 
+	// print gl version
+	ofLogNotice("GL Version: ") << ofGetGLRenderer()->getGLVersionMajor() << "."
+								<< ofGetGLRenderer()->getGLVersionMinor();
+
 	ofSetWindowShape(WIN_W, WIN_H);
 	ofSetFrameRate(60);
 	ofEnableAlphaBlending();
@@ -32,18 +36,20 @@ void ofApp::setup() {
 	// store a minimum squared value to apply flow velocity
 	minLengthSquared = 0.8 * 0.8; // 0.5 pixel squared
 
-	player1 = Player(ofVec2f(64, 120), ofVec2f(42, 320));
-	player2 = Player(ofVec2f(WIN_W - 64, WIN_H / 2.0), ofVec2f(42, 320));
+	ofVec2f paddleSize(64, 256);
+	float centeredY = (WIN_H - paddleSize.y) / 2.0;
+
+	player1 = Player(ofVec2f(64, centeredY), paddleSize);
+	player2 = Player(ofVec2f(WIN_W - 64, centeredY), paddleSize);
 
 	ofTrueTypeFont::setGlobalDpi(72); // Default is 96, but results in larger than normal pt size.
-	scoreBoard.load(ofToDataPath("verdana.ttf"), 42, true,
-					true);			   // filename via ofToDataPath, point size, antialiased?, full char-set?
-	scoreBoard.setLineHeight(28.0);	   // Default is based on font size.
-	scoreBoard.setLetterSpacing(1.05); // Default is based on font size.
+	scoreBoard.load(ofToDataPath("verdana.ttf"), 42, true, true);
+	scoreBoard.setLineHeight(28.0);
+	scoreBoard.setLetterSpacing(1.05);
 
 	fpsFont.load(ofToDataPath("verdana.ttf"), 22, true, true);
 
-	cam.setVerbose(true);
+	cam.setVerbose(false);
 	cam.setup(1280, 720);
 
 	sourceWidth = cam.getWidth();
@@ -61,14 +67,21 @@ void ofApp::setup() {
 
 	// Setup post-processing chain
 	post.init(ofGetWidth(), ofGetHeight());
-	post.createPass<FxaaPass>()->setEnabled(true);
 	post.createPass<BloomPass>()->setEnabled(true);
 	post.createPass<ZoomBlurPass>()->setEnabled(true);
-	post.createPass<GodRaysPass>()->setEnabled(true);
-	post.createPass<ConvolutionPass>()->setEnabled(true);
 
-	zoomBlur = dynamic_cast<ZoomBlurPass *>(post[2].get());
-	zoomBlur->setExposure(0.5);
+
+	zoomBlur = dynamic_cast<ZoomBlurPass *>(post[1].get());
+	zoomBlur->setExposure(0.35);
+	zoomBlur->setWeight(0.5);
+	zoomBlur->setDecay(0.9);
+	zoomBlur->setDensity(0.1);
+
+
+	asciiShader.load("ascii.vert", "ascii.frag");
+
+	particlesFbo.allocate(WIN_W, WIN_H, GL_RGBA);
+	ofLoadImage(asciiAtlas, "asciiAtlas.png"); // Ensure this is a grayscale font atlas texture
 
 	///////////////////////////////////////////////////////
 }
@@ -96,6 +109,86 @@ void ofApp::update() {
 
 
 //-----------------------------------------------------------------------------------------------------------
+void ofApp::draw() {
+	post.begin();
+
+	particlesFbo.begin();
+
+	ofBackgroundGradient(ofColor(0), bgColor);
+	ofSetColor(255);
+
+	if (grayImage.bAllocated) {
+		drawParticles();
+	}
+
+	particlesFbo.end();
+
+
+	ofSetColor(255);
+
+	asciiShader.begin();
+	asciiShader.setUniformTexture("tex0", cam.getTexture(), 0); // or depthProcessed.getTexture()
+	asciiShader.setUniformTexture("asciiAtlas", asciiAtlas, 1);
+	asciiShader.setUniform1f("cellSize", 8.0);		   // adjust to taste
+	asciiShader.setUniform2f("atlasSize", 16.0, 16.0); // for 16x16 grid
+	asciiShader.end();
+
+	particlesFbo.draw(0, 0);
+	post.end();
+
+	player1.draw();
+	player2.draw();
+
+	ball.draw();
+	ball.move(player1, player2);
+
+
+	ofSetColor(255, 255, 255);
+	scoreBoard.drawString("SCORE : " + ofToString(player1.score) + " | " + ofToString(player2.score), WIN_W / 3.0, 40);
+
+	ofSetColor(25, 200, 111);
+	fpsFont.drawString(ofToString((int)ofGetFrameRate()) + " FPS", WIN_W / 1.2, 30);
+
+	ofSetColor(bgColor);
+
+
+	float centOffX = 1 - (ball.pos.x / WIN_W);
+	float centOffY = (ball.pos.y / WIN_H);
+
+
+	zoomBlur->setCenterX(centOffX);
+	zoomBlur->setCenterY(centOffY);
+
+#ifdef UI
+	uiManager.draw();
+#endif
+}
+
+
+//-----------------------------------------------------------------------------------------------------------
+
+void ofApp::generateParticles(int s_width, int s_height) {
+	particles.clear();
+
+	int numx = s_width / spacing;
+	int numy = s_height / spacing;
+
+	float delta = 1.0f;
+
+	for (int x = 0; x < numx; x++) {
+		for (int y = 0; y < numy; y++) {
+			glm::vec2 pos(spacing * delta + (float)x * spacing, spacing * delta + (float)y * spacing);
+
+			Particle particle;
+
+			particle.pos = pos;
+			particle.size = spacing;
+			particle.basePos = particle.pos;
+			particles.push_back(particle);
+		}
+	}
+	ofLogNotice() << "Particles generated: " << particles.size();
+}
 
 void ofApp::drawParticles() {
 	size_t numParticles = particles.size();
@@ -128,71 +221,7 @@ void ofApp::drawParticles() {
 	}
 }
 
-void ofApp::draw() {
-	post.begin();
-
-	ofBackgroundGradient(ofColor(0), bgColor);
-	ofSetColor(255);
-
-	if (grayImage.bAllocated)
-		drawParticles();
-
-	post.end();
-
-	player1.draw();
-	player2.draw();
-
-	ball.draw();
-	ball.move(player1, player2);
-
-
-	ofSetColor(255, 255, 255);
-	scoreBoard.drawString("SCORE : " + ofToString(player1.score) + " | " + ofToString(player2.score), WIN_W / 3.0, 40);
-
-	ofSetColor(25, 200, 111);
-	fpsFont.drawString(ofToString((int)ofGetFrameRate()) + " FPS", WIN_W / 1.2, 30);
-
-	ofSetColor(bgColor);
-
-
-	float centOffX = ball.pos.x / WIN_W;
-	float centOffY = ball.pos.y / WIN_H;
-	centOffY = 1.0 - centOffY;
-
-
-	zoomBlur->setCenterX(centOffX);
-	zoomBlur->setCenterY(centOffY);
-
-#ifdef UI
-	uiManager.draw();
-#endif
-}
-
-//-----------------------------------------------------------------------------------------------------------
-
-void ofApp::generateParticles(int s_width, int s_height) {
-	particles.clear();
-
-	int numx = s_width / spacing;
-	int numy = s_height / spacing;
-
-	float delta = 1.0f;
-
-	for (int x = 0; x < numx; x++) {
-		for (int y = 0; y < numy; y++) {
-			glm::vec2 pos(spacing * delta + (float)x * spacing, spacing * delta + (float)y * spacing);
-
-			Particle particle;
-
-			particle.pos = pos;
-			particle.size = spacing;
-			particle.basePos = particle.pos;
-			particles.push_back(particle);
-		}
-	}
-	ofLogNotice() << "Particles generated: " << particles.size();
-}
-
+//-------------------------------------------------------------------------------------
 
 void ofApp::updateCamera() {
 	cam.update();
@@ -379,19 +408,25 @@ void ofApp::keyPressed(int key) {
 			break;
 		case 's':
 			spacing += 1;
+			spacing >= 32 ? spacing = 32 : spacing;
 			spacingChanged(spacing);
 			break;
 		case 'a':
 			spacing -= 1;
+			spacing <= 2 ? spacing = 2 : spacing;
 			spacingChanged(spacing);
 			break;
 		case 'p':
-			particle_size += 1.0;
-			particle_size > 30.0 ? particle_size = 30.0 : particle_size;
+			particle_size += 0.01f;
+			if (particle_size > 128.0f) {
+				particle_size = 128.0f;
+			}
 			break;
 		case 'o':
-			particle_size -= 1.0;
-			particle_size < 1.0 ? particle_size = 1.0 : particle_size;
+			particle_size -= 0.01f;
+			if (particle_size < 0.01f) {
+				particle_size = 0.01f;
+			}
 			break;
 		default:
 			break;
@@ -409,6 +444,8 @@ void ofApp::windowResized(int w, int h) {
 
 void ofApp::spacingChanged(int &spacing) {
 	this->spacing = spacing;
+	spacing = ofClamp(spacing, 2, 32);
+
 	generateParticles(WIN_W, WIN_H);
 }
 
