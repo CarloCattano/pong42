@@ -66,6 +66,7 @@ public:
 	ofTrueTypeFont scoreBoard;
 	ofxPostProcessing post;
 	ZoomBlurPass *zoomBlur;
+	EdgePass *edgePass;
 
 	ofShader asciiShader;
 	ofFbo particlesFbo;
@@ -101,7 +102,7 @@ private:
 	void AllocateImages();
 	void processNewFrame();
 	void calculateOpticalFlow();
-	void updateParticles(float deltaTime);
+	void updateParticles();
 	void applyFlowToPlayers();
 
 	int sourceWidth;

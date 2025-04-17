@@ -1,4 +1,5 @@
 #include "ofApp.h"
+#include "EdgePass.h"
 #include "Player.hpp"
 #include "fwd.hpp"
 #include "ofAppRunner.h"
@@ -66,24 +67,25 @@ void ofApp::setup() {
 	uiManager.setup();
 
 	// Setup post-processing chain
-	post.init(ofGetWidth(), ofGetHeight());
+	post.init(WIN_W, WIN_H);
+
 	post.createPass<BloomPass>()->setEnabled(true);
 	post.createPass<ZoomBlurPass>()->setEnabled(true);
-
+	post.createPass<EdgePass>()->setEnabled(false);
 
 	zoomBlur = dynamic_cast<ZoomBlurPass *>(post[1].get());
-	zoomBlur->setExposure(0.35);
-	zoomBlur->setWeight(0.5);
+	edgePass = dynamic_cast<EdgePass *>(post[2].get());
+
+	zoomBlur->setExposure(0.25);
+	zoomBlur->setWeight(0.6);
 	zoomBlur->setDecay(0.9);
 	zoomBlur->setDensity(0.1);
-
 
 	asciiShader.load("ascii.vert", "ascii.frag");
 
 	particlesFbo.allocate(WIN_W, WIN_H, GL_RGBA);
 	ofLoadImage(asciiAtlas, "asciiAtlas.png"); // Ensure this is a grayscale font atlas texture
-
-	///////////////////////////////////////////////////////
+	//--------------------------------------------------------------------------------
 }
 //-----------------------------------------------------------------------------------------------------------
 void ofApp::update() {
@@ -96,9 +98,7 @@ void ofApp::update() {
 		calculateOpticalFlow();
 	}
 
-	float deltaTime = ofClamp(ofGetLastFrameTime(), 1.f / 5000.f, 1.f / 5.f);
-
-	updateParticles(deltaTime);
+	updateParticles();
 	applyFlowToPlayers();
 
 	player1.update();
@@ -110,6 +110,7 @@ void ofApp::update() {
 
 //-----------------------------------------------------------------------------------------------------------
 void ofApp::draw() {
+	//-----------------------------------------------------------------------------------------------------------
 	post.begin();
 
 	particlesFbo.begin();
@@ -136,12 +137,14 @@ void ofApp::draw() {
 	particlesFbo.draw(0, 0);
 	post.end();
 
+	//-----------------------------------------------------------------------------------------------------------
+
 	player1.draw();
 	player2.draw();
 
-	ball.draw();
 	ball.move(player1, player2);
 
+	ball.draw();
 
 	ofSetColor(255, 255, 255);
 	scoreBoard.drawString("SCORE : " + ofToString(player1.score) + " | " + ofToString(player2.score), WIN_W / 3.0, 40);
@@ -152,13 +155,13 @@ void ofApp::draw() {
 	ofSetColor(bgColor);
 
 
-	float centOffX = 1 - (ball.pos.x / WIN_W);
-	float centOffY = (ball.pos.y / WIN_H);
+	float centOffX = (ball.pos.x / WIN_W);
+	float centOffY = 1 - (ball.pos.y / WIN_H);
 
+	zoomBlur->setCenterX(ofLerp(zoomBlur->getCenterX(), centOffX, 0.5));
+	zoomBlur->setCenterY(ofLerp(zoomBlur->getCenterY(), centOffY, 0.5));
 
-	zoomBlur->setCenterX(centOffX);
-	zoomBlur->setCenterY(centOffY);
-
+	edgePass->setSaturation(ofLerp(edgePass->getSaturation(), centOffX, 0.3));
 #ifdef UI
 	uiManager.draw();
 #endif
@@ -278,7 +281,8 @@ void ofApp::calculateOpticalFlow() {
 }
 
 
-void ofApp::updateParticles(float deltaTime) {
+void ofApp::updateParticles() {
+	float deltaTime = ofClamp(ofGetLastFrameTime(), 1.f / 5000.f, 1.f / 5.f);
 	glm::vec2 leftFlowVector(0, 0);
 	glm::vec2 rightFlowVector(0, 0);
 	size_t numParticles = particles.size();
@@ -296,7 +300,7 @@ void ofApp::updateParticles(float deltaTime) {
 		float len2 = glm::length2(flowForce);
 		particle.vel /= 1.f + deltaTime;
 		if (len2 > minLengthSquared) {
-			particle.vel += flowForce * (20.0f * deltaTime);
+			particle.vel += flowForce * (30.0f * deltaTime);
 			if (particle.bAtBasePos)
 				particle.timeNotTouched = 0.0f;
 			particle.bAtBasePos = false;
@@ -304,14 +308,19 @@ void ofApp::updateParticles(float deltaTime) {
 			particle.timeNotTouched += deltaTime;
 		}
 
-		if (particle.timeNotTouched > 2.0) {
+		if (particle.timeNotTouched > 0.1) {
 			particle.timeNotTouched = 0.0;
-			if (!particle.bAtBasePos) {
-				particle.pos = particle.basePos;
-				particle.vel = { 0, 0 };
-			}
-			particle.bAtBasePos = true;
 		}
+
+		glm::vec2 basePos = particle.basePos;
+		glm::vec2 diff = basePos - particle.pos;
+		float dist = glm::length(diff);
+		if (dist > 0.1f) {
+			glm::vec2 dir = glm::normalize(diff);
+			particle.vel += dir * (dist * 0.5f * deltaTime);
+		}
+
+		particle.vel *= 0.99f;
 		particle.pos += particle.vel * (10.0f * deltaTime);
 	}
 
@@ -438,6 +447,9 @@ void ofApp::keyPressed(int key) {
 void ofApp::windowResized(int w, int h) {
 	WIN_W = w;
 	WIN_H = h;
+
+	particlesFbo.allocate(WIN_W, WIN_H, GL_RGBA);
+	post.init(WIN_W, WIN_H);
 
 	ofSetWindowShape(WIN_W, WIN_H);
 }
