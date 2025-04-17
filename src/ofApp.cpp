@@ -14,7 +14,7 @@ void ofApp::setup() {
 	WIN_H = ofGetHeight();
 
 	ofSetWindowShape(WIN_W, WIN_H);
-	ofSetFrameRate(30);
+	ofSetFrameRate(60);
 	ofEnableAlphaBlending();
 	ofSetWindowTitle("OpticalFlowYo!");
 	ofBackground(bgColor);
@@ -58,7 +58,117 @@ void ofApp::setup() {
 	uiManager.particle_size_s.addListener(this, &ofApp::particleSizeChanged);
 
 	uiManager.setup();
+
+	// Setup post-processing chain
+	post.init(ofGetWidth(), ofGetHeight());
+	post.createPass<FxaaPass>()->setEnabled(true);
+	post.createPass<BloomPass>()->setEnabled(true);
+	post.createPass<ZoomBlurPass>()->setEnabled(true);
+	post.createPass<GodRaysPass>()->setEnabled(true);
+	post.createPass<ConvolutionPass>()->setEnabled(true);
+
+	zoomBlur = dynamic_cast<ZoomBlurPass *>(post[2].get());
+	zoomBlur->setExposure(0.5);
+
+	///////////////////////////////////////////////////////
 }
+//-----------------------------------------------------------------------------------------------------------
+void ofApp::update() {
+	updateCamera();
+
+	AllocateImages();
+
+	if (bNewFrame) {
+		processNewFrame();
+		calculateOpticalFlow();
+	}
+
+	float deltaTime = ofClamp(ofGetLastFrameTime(), 1.f / 5000.f, 1.f / 5.f);
+
+	updateParticles(deltaTime);
+	applyFlowToPlayers();
+
+	player1.update();
+	player2.update();
+
+	collision();
+}
+
+
+//-----------------------------------------------------------------------------------------------------------
+
+void ofApp::drawParticles() {
+	size_t numParticles = particles.size();
+	const ofPixels &vpix = colorImg.getPixels();
+
+	for (size_t i = 0; i < numParticles; i++) {
+		auto &particle = particles[i];
+		int samplex = particle.pos.x;
+		if (bMirror)
+			samplex = colorImg.getWidth() - samplex;
+
+		int sampley = particle.pos.y;
+
+		if (samplex >= 0 && samplex < (int)vpix.getWidth() && sampley >= 0 && sampley < (int)vpix.getHeight()) {
+			ofFloatColor vcolor = vpix.getColor(samplex, sampley);
+			ofFloatColor color(1, 1, 1, 1);
+			color = vcolor;
+			ofSetColor(color);
+			ofPushMatrix();
+
+			float xmult = WIN_W / colorImg.getWidth();
+			float ymult = WIN_H / colorImg.getHeight();
+
+			float psize = particle.size * particle_size * (vcolor.getBrightness() * 0.8f + 0.2f);
+
+			ofTranslate(particle.pos.x * xmult, particle.pos.y * ymult);
+			ofDrawCircle(0, 0, psize);
+			ofPopMatrix();
+		}
+	}
+}
+
+void ofApp::draw() {
+	post.begin();
+
+	ofBackgroundGradient(ofColor(0), bgColor);
+	ofSetColor(255);
+
+	if (grayImage.bAllocated)
+		drawParticles();
+
+	post.end();
+
+	player1.draw();
+	player2.draw();
+
+	ball.draw();
+	ball.move(player1, player2);
+
+
+	ofSetColor(255, 255, 255);
+	scoreBoard.drawString("SCORE : " + ofToString(player1.score) + " | " + ofToString(player2.score), WIN_W / 3.0, 40);
+
+	ofSetColor(25, 200, 111);
+	fpsFont.drawString(ofToString((int)ofGetFrameRate()) + " FPS", WIN_W / 1.2, 30);
+
+	ofSetColor(bgColor);
+
+
+	float centOffX = ball.pos.x / WIN_W;
+	float centOffY = ball.pos.y / WIN_H;
+	centOffY = 1.0 - centOffY;
+
+
+	zoomBlur->setCenterX(centOffX);
+	zoomBlur->setCenterY(centOffY);
+
+#ifdef UI
+	uiManager.draw();
+#endif
+}
+
+//-----------------------------------------------------------------------------------------------------------
 
 void ofApp::generateParticles(int s_width, int s_height) {
 	particles.clear();
@@ -83,17 +193,17 @@ void ofApp::generateParticles(int s_width, int s_height) {
 	ofLogNotice() << "Particles generated: " << particles.size();
 }
 
-//-----------------------------------------------------------------------------------------------------------
 
-void ofApp::update() {
-	bool bNewFrame = false;
-
+void ofApp::updateCamera() {
 	cam.update();
 	bNewFrame = cam.isFrameNew();
 
 	colorImageRGB = cam.getPixels();
 	depthOrig = colorImageRGB;
+}
 
+
+void ofApp::AllocateImages() {
 	int scaledWidth = sourceWidth / cvDownScale;
 	int scaledHeight = sourceHeight / cvDownScale;
 
@@ -110,44 +220,41 @@ void ofApp::update() {
 
 		generateParticles(sourceWidth, sourceHeight);
 	}
+}
 
-	if (bNewFrame) {
-		colorImg.setFromPixels(cam.getPixels());
-		grayImage = colorImg;
 
-		if (bMirror)
-			grayImage.mirror(false, true);
+void ofApp::processNewFrame() {
+	colorImg.setFromPixels(cam.getPixels());
+	grayImage = colorImg;
 
-		currentImage.scaleIntoMe(grayImage);
+	if (bMirror)
+		grayImage.mirror(false, true);
 
-		if (bContrastStretch)
-			currentImage.contrastStretch();
+	currentImage.scaleIntoMe(grayImage);
 
-		if (blurAmount > 0)
-			currentImage.blurGaussian(blurAmount);
+	if (bContrastStretch)
+		currentImage.contrastStretch();
 
-		cv::Mat currentMat = currentImage.getCvMat();
-		cv::calcOpticalFlowFarneback(previousMat, currentMat, flowMat,
-									 0.5, // pyr_scale
-									 4,	  // levels
-									 4,	  // winsize
-									 2,	  // iterations
-									 4,	  // poly_n
-									 1.2, // poly_sigma
-									 cv::OPTFLOW_FARNEBACK_GAUSSIAN);
+	if (blurAmount > 0)
+		currentImage.blurGaussian(blurAmount);
+}
 
-		currentMat.copyTo(previousMat);
-	}
 
-#ifdef PARTICLES
-	float deltaTime = ofClamp(ofGetLastFrameTime(), 1.f / 5000.f, 1.f / 5.f);
-	size_t numParticles = particles.size();
+void ofApp::calculateOpticalFlow() {
+	cv::Mat currentMat = currentImage.getCvMat();
+	cv::calcOpticalFlowFarneback(previousMat, currentMat, flowMat, 0.5, 4, 4, 2, 4, 1.2,
+								 cv::OPTFLOW_FARNEBACK_GAUSSIAN);
 
+	currentMat.copyTo(previousMat);
+}
+
+
+void ofApp::updateParticles(float deltaTime) {
 	glm::vec2 leftFlowVector(0, 0);
 	glm::vec2 rightFlowVector(0, 0);
+	size_t numParticles = particles.size();
 
-	for (size_t i = 0; i < numParticles; i++) {
-		auto &particle = particles[i];
+	for (auto &particle : particles) {
 		float percentX = particle.pos.x / sourceWidth;
 		float percentY = particle.pos.y / sourceHeight;
 		glm::vec2 flowForce = getOpticalFlowValueForPercent(percentX, percentY);
@@ -161,14 +268,13 @@ void ofApp::update() {
 		particle.vel /= 1.f + deltaTime;
 		if (len2 > minLengthSquared) {
 			particle.vel += flowForce * (20.0f * deltaTime);
-			if (particle.bAtBasePos) {
+			if (particle.bAtBasePos)
 				particle.timeNotTouched = 0.0f;
-			}
 			particle.bAtBasePos = false;
-
 		} else {
 			particle.timeNotTouched += deltaTime;
 		}
+
 		if (particle.timeNotTouched > 2.0) {
 			particle.timeNotTouched = 0.0;
 			if (!particle.bAtBasePos) {
@@ -183,86 +289,27 @@ void ofApp::update() {
 	leftFlowVector /= numParticles / 2;
 	rightFlowVector /= numParticles / 2;
 
+	this->leftFlowVector = leftFlowVector;
+	this->rightFlowVector = rightFlowVector;
+}
+
+
+//-----------------------------------------------------------------------------------------------------------
+
+void ofApp::applyFlowToPlayers() {
 	if (leftFlowVector.x > flowSensitivity)
 		player1.move(ofVec2f(0, player1.speed));
-
 	else if (leftFlowVector.x < -flowSensitivity)
 		player1.move(ofVec2f(0, -player1.speed));
 
 	if (rightFlowVector.x > flowSensitivity)
 		player2.move(ofVec2f(0, player2.speed));
-
 	else if (rightFlowVector.x < -flowSensitivity)
 		player2.move(ofVec2f(0, -player2.speed));
-
-	player1.update();
-	player2.update();
-
-#endif
-	collision();
 }
 
-//-----------------------------------------------------------------------------------------------------------
-
-void ofApp::draw() {
-	ofBackgroundGradient(ofColor(0), bgColor);
-	ofSetColor(255);
-
-#ifdef PARTICLES
-	if (grayImage.bAllocated) {
-		size_t numParticles = particles.size();
-		const ofPixels &vpix = colorImg.getPixels();
-
-		for (size_t i = 0; i < numParticles; i++) {
-			auto &particle = particles[i];
-			int samplex = particle.pos.x;
-			if (bMirror)
-				samplex = colorImg.getWidth() - samplex;
-
-			int sampley = particle.pos.y;
-
-			if (samplex >= 0 && samplex < vpix.getWidth() && sampley >= 0 && sampley < vpix.getHeight()) {
-				ofFloatColor vcolor = vpix.getColor(samplex, sampley);
-				ofFloatColor color(1, 1, 1, 1);
-				color = vcolor;
-				ofSetColor(color);
-				ofPushMatrix();
-
-				float xmult = WIN_W / colorImg.getWidth();
-				float ymult = WIN_H / colorImg.getHeight();
-
-				float psize = particle.size * particle_size * (vcolor.getBrightness() * 0.8f + 0.2f);
-
-				ofTranslate(particle.pos.x * xmult, particle.pos.y * ymult);
-				ofDrawCircle(0, 0, psize);
-				ofPopMatrix();
-			}
-		}
-	}
-#endif
-
-	player1.draw();
-	player2.draw();
-
-	ball.draw();
-	ball.move(player1, player2);
-	// cam.draw(242, 42, (WIN_W / 6.0) - 40, (WIN_H / 6.0) - 20 );
-
-	ofSetColor(255, 255, 255);
-	scoreBoard.drawString("SCORE : " + ofToString(player1.score) + " | " + ofToString(player2.score), WIN_W / 3.0, 40);
-
-	ofSetColor(25, 200, 111);
-	fpsFont.drawString(ofToString((int)ofGetFrameRate()) + " FPS", WIN_W / 1.2, 30);
-
-	ofSetColor(bgColor);
-
-#ifdef UI
-	uiManager.draw();
-#endif
-}
 
 //-----------------------------------------------------------------------------------------------------------
-
 glm::vec2 ofApp::getOpticalFlowValueForPercent(float xpct, float ypct) {
 	glm::vec2 flowVector(0, 0);
 
@@ -295,7 +342,6 @@ glm::vec2 ofApp::getOpticalFlowValueForPercent(float xpct, float ypct) {
 }
 
 void ofApp::collision() {
-	// Check collision with player1
 	if (ball.pos.x - ball.size.x / 2 < player1.pos.x + player1.size.x / 2 &&
 		ball.pos.x + ball.size.x / 2 > player1.pos.x - player1.size.x / 2 &&
 		ball.pos.y - ball.size.y / 2 < player1.pos.y + player1.size.y / 2 &&
@@ -303,7 +349,6 @@ void ofApp::collision() {
 		ball.dir.x *= -1;
 	}
 
-	// Check collision with player2 (if player2 is implemented)
 	if (ball.pos.x - ball.size.x / 2 < player2.pos.x + player2.size.x / 2 &&
 		ball.pos.x + ball.size.x / 2 > player2.pos.x - player2.size.x / 2 &&
 		ball.pos.y - ball.size.y / 2 < player2.pos.y + player2.size.y / 2 &&
@@ -312,8 +357,16 @@ void ofApp::collision() {
 	}
 }
 
+
+// CALLBACKS
 //-----------------------------------------------------------------------------------------------------------
 void ofApp::keyPressed(int key) {
+	unsigned idx = key - '0';
+	if (idx < post.size()) {
+		post[idx]->setEnabled(!post[idx]->getEnabled());
+		return;
+	}
+
 	switch (key) {
 		case OF_KEY_UP:
 			cvDownScale += 1.f;
@@ -333,14 +386,14 @@ void ofApp::keyPressed(int key) {
 			spacingChanged(spacing);
 			break;
 		case 'p':
-			particle_size += 0.1;
-			particle_size > 40.0 ? particle_size = 40.0 : particle_size;
+			particle_size += 1.0;
+			particle_size > 30.0 ? particle_size = 30.0 : particle_size;
 			break;
 		case 'o':
-			particle_size -= 0.1;
-			particle_size < 0.01 ? particle_size = 0.01 : particle_size;
+			particle_size -= 1.0;
+			particle_size < 1.0 ? particle_size = 1.0 : particle_size;
 			break;
-		case ' ':
+		default:
 			break;
 	}
 }

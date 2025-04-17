@@ -10,3 +10,4 @@ bin/
 .vscode/
 obj/
 compile_commands.json
+tags

@@ -7,6 +7,7 @@
 #include "ofTrueTypeFont.h"
 #include "ofxGui.h"
 #include "ofxOpenCv.h"
+#include "ofxPostProcessing.h"
 
 #define PARTICLES
 // #define UI
@@ -63,15 +64,22 @@ public:
 	Ball ball;
 
 	ofTrueTypeFont scoreBoard;
+	ofxPostProcessing post;
+	ZoomBlurPass *zoomBlur;
 
 private:
 	unsigned short int WIN_H;
 	unsigned short int WIN_W;
 
+	bool bNewFrame;
+
 	float particle_size;
 	ofColor bgColor;
 
 	float flowSensitivity;
+
+	glm::vec2 leftFlowVector;
+	glm::vec2 rightFlowVector;
 
 	ofTrueTypeFont font;
 	ofTrueTypeFont fpsFont;
@@ -83,6 +91,14 @@ private:
 	void particleSizeChanged(float &particle_size);
 
 	void collision();
+
+	void drawParticles();
+	void updateCamera();
+	void AllocateImages();
+	void processNewFrame();
+	void calculateOpticalFlow();
+	void updateParticles(float deltaTime);
+	void applyFlowToPlayers();
 
 	int sourceWidth;
 	int sourceHeight;
