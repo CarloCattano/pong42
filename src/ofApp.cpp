@@ -69,9 +69,10 @@ void ofApp::setup() {
 #ifdef UI
 	uiManager.spacing_s.addListener(this, &ofApp::spacingChanged);
 	uiManager.particle_size_s.addListener(this, &ofApp::particleSizeChanged);
+
 	uiManager.exposure_s.addListener(this, &ofApp::postProcessingChanged);
 	uiManager.weight_s.addListener(this, &ofApp::postProcessingChanged);
-	uiManager.cellSize_s.addListener(this, &ofApp::asciiCellSizeChanged);
+
 	uiManager.spread_s.addListener(this, &ofApp::asciiSpreadChanged);
 	uiManager.asciiOffset_s.addListener(this, &ofApp::asciiOffsetChanged);
 
@@ -90,14 +91,13 @@ void ofApp::setup() {
 	asciiFontScale = 1.0f;
 	asciiShader.load("ascii.vert", "ascii.frag");
 
-	atlasSize_grid = ofVec2f(8.0f, 8.0f);
-	atlasCellSize = 16.0f;
-	uiManager.cellSize_s = atlasCellSize;
+	atlasSize_grid = ofVec2f(16.0f, 16.0f);
+	atlasCellSize = 32.0f;
 
 	asciiAtlas.setTextureMinMagFilter(GL_NEAREST, GL_NEAREST); // Prevents blurring
 
 	particlesFbo.allocate(WIN_W, WIN_H, GL_RGBA);
-	ofLoadImage(asciiAtlas, "8x8x1616x12pt.png"); // Ensure this is a grayscale font atlas texture
+	ofLoadImage(asciiAtlas, "16x16_32x32_22.png"); // Ensure this is a grayscale font atlas texture
 	//--------------------------------------------------------------------------------
 }
 //-----------------------------------------------------------------------------------------------------------
@@ -507,13 +507,10 @@ void ofApp::postProcessingChanged(float &exposure) {
 	zoomBlur->setWeight(uiManager.weight_s);
 }
 
-void ofApp::asciiCellSizeChanged(float &size) {
-	atlasCellSize = size;
-}
-void ofApp::asciiSpreadChanged(float &spread) {
+void ofApp::asciiSpreadChanged(int &spread) {
 	asciiFontScale = spread;
 }
 
-void ofApp::asciiOffsetChanged(float &offset) {
+void ofApp::asciiOffsetChanged(int &offset) {
 	s_asciiCharsetOffset = offset;
 }

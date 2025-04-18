@@ -6,10 +6,8 @@ void UIManager::setup() {
 	gui.add(spacing_s.setup("Spacing", 10, 4, 32));
 	gui.add(exposure_s.setup("Exposure", 0.3f, 0.01f, 2.0f));
 	gui.add(weight_s.setup("Weight", 0.25f, 0.01f, 1.0f));
-
-	gui.add(cellSize_s.setup("Cell Size", 56.0f, 1.0f, 64.0f));
-	gui.add(spread_s.setup("spread", 1.0f, 1.0f, 256.0f));
-	gui.add(asciiOffset_s.setup("asciiOffset", 0.0f, 0.0f, 128.0f));
+	gui.add(spread_s.setup("spread", 1, 1, 255));
+	gui.add(asciiOffset_s.setup("asciiOffset", 0, 0, 128));
 }
 
 void UIManager::draw() {

@@ -102,9 +102,8 @@ private:
 	void spacingChanged(int &spacing);
 	void particleSizeChanged(float &particle_size);
 	void postProcessingChanged(float &exposure);
-	void asciiSpreadChanged(float &spread);
-	void asciiCellSizeChanged(float &size);
-	void asciiOffsetChanged(float &offset);
+	void asciiSpreadChanged(int &spread);
+	void asciiOffsetChanged(int &offset);
 
 	void collision();
 

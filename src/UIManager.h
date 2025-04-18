@@ -14,7 +14,6 @@ public:
 	ofxFloatSlider exposure_s;
 	ofxFloatSlider weight_s;
 
-	ofxFloatSlider cellSize_s;
-	ofxFloatSlider spread_s;
-	ofxFloatSlider asciiOffset_s;
+	ofxIntSlider spread_s;
+	ofxIntSlider asciiOffset_s;
 };
