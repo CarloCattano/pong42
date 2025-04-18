@@ -2,9 +2,14 @@
 
 void UIManager::setup() {
 	gui.setup();
-	gui.add(particle_size_s.setup("Particle Size", 1.0f, 1.0f, 10.0f));
+	gui.add(particle_size_s.setup("Particle Size", 1.0f, 0.1f, 5.0f));
+	gui.add(spacing_s.setup("Spacing", 10, 4, 32));
+	gui.add(exposure_s.setup("Exposure", 0.3f, 0.01f, 2.0f));
+	gui.add(weight_s.setup("Weight", 0.25f, 0.01f, 1.0f));
 
-	particle_size_s.setSize(60, 40);
+	gui.add(cellSize_s.setup("Cell Size", 56.0f, 1.0f, 64.0f));
+	gui.add(spread_s.setup("spread", 1.0f, 1.0f, 80.0f));
+	gui.add(asciiOffset_s.setup("asciiOffset", 0.0f, 0.0f, 64.0f));
 }
 
 void UIManager::draw() {

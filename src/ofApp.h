@@ -10,7 +10,7 @@
 #include "ofxPostProcessing.h"
 
 #define PARTICLES
-// #define UI
+#define UI
 
 class Particle {
 public:
@@ -78,10 +78,17 @@ private:
 
 	bool bNewFrame;
 
+	bool b_Ascii;
+
 	float particle_size;
 	ofColor bgColor;
 
 	float flowSensitivity;
+
+	float asciiFontScale;
+	ofVec2f atlasSize_grid;
+	float atlasCellSize;
+	float s_asciiCharsetOffset;
 
 	glm::vec2 leftFlowVector;
 	glm::vec2 rightFlowVector;
@@ -94,6 +101,10 @@ private:
 
 	void spacingChanged(int &spacing);
 	void particleSizeChanged(float &particle_size);
+	void postProcessingChanged(float &exposure);
+	void asciiSpreadChanged(float &spread);
+	void asciiCellSizeChanged(float &size);
+	void asciiOffsetChanged(float &offset);
 
 	void collision();
 

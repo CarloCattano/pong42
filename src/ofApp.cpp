@@ -14,10 +14,6 @@ void ofApp::setup() {
 	WIN_W = ofGetWidth();
 	WIN_H = ofGetHeight();
 
-	// print gl version
-	ofLogNotice("GL Version: ") << ofGetGLRenderer()->getGLVersionMajor() << "."
-								<< ofGetGLRenderer()->getGLVersionMinor();
-
 	ofSetWindowShape(WIN_W, WIN_H);
 	ofSetFrameRate(60);
 	ofEnableAlphaBlending();
@@ -58,13 +54,7 @@ void ofApp::setup() {
 
 	depthOrig.allocate(sourceWidth, sourceHeight);
 	depthProcessed.allocate(sourceWidth, sourceHeight);
-
 	colorImg.allocate(sourceWidth, sourceHeight);
-
-	uiManager.spacing_s.addListener(this, &ofApp::spacingChanged);
-	uiManager.particle_size_s.addListener(this, &ofApp::particleSizeChanged);
-
-	uiManager.setup();
 
 	// Setup post-processing chain
 	post.init(WIN_W, WIN_H);
@@ -76,15 +66,38 @@ void ofApp::setup() {
 	zoomBlur = dynamic_cast<ZoomBlurPass *>(post[1].get());
 	edgePass = dynamic_cast<EdgePass *>(post[2].get());
 
+#ifdef UI
+	uiManager.spacing_s.addListener(this, &ofApp::spacingChanged);
+	uiManager.particle_size_s.addListener(this, &ofApp::particleSizeChanged);
+	uiManager.exposure_s.addListener(this, &ofApp::postProcessingChanged);
+	uiManager.weight_s.addListener(this, &ofApp::postProcessingChanged);
+	uiManager.cellSize_s.addListener(this, &ofApp::asciiCellSizeChanged);
+	uiManager.spread_s.addListener(this, &ofApp::asciiSpreadChanged);
+	uiManager.asciiOffset_s.addListener(this, &ofApp::asciiOffsetChanged);
+
+	uiManager.setup();
+
+#endif
+
 	zoomBlur->setExposure(0.25);
 	zoomBlur->setWeight(0.6);
 	zoomBlur->setDecay(0.9);
 	zoomBlur->setDensity(0.1);
 
+
+	b_Ascii = true;
+
+	asciiFontScale = 1.0f;
 	asciiShader.load("ascii.vert", "ascii.frag");
 
+	atlasSize_grid = ofVec2f(8.0f, 8.0f);
+	atlasCellSize = 16.0f;
+	uiManager.cellSize_s = atlasCellSize;
+
+	asciiAtlas.setTextureMinMagFilter(GL_NEAREST, GL_NEAREST); // Prevents blurring
+
 	particlesFbo.allocate(WIN_W, WIN_H, GL_RGBA);
-	ofLoadImage(asciiAtlas, "asciiAtlas.png"); // Ensure this is a grayscale font atlas texture
+	ofLoadImage(asciiAtlas, "8x8x1616x12pt.png"); // Ensure this is a grayscale font atlas texture
 	//--------------------------------------------------------------------------------
 }
 //-----------------------------------------------------------------------------------------------------------
@@ -127,14 +140,20 @@ void ofApp::draw() {
 
 	ofSetColor(255);
 
-	asciiShader.begin();
-	asciiShader.setUniformTexture("tex0", cam.getTexture(), 0); // or depthProcessed.getTexture()
-	asciiShader.setUniformTexture("asciiAtlas", asciiAtlas, 1);
-	asciiShader.setUniform1f("cellSize", 8.0);		   // adjust to taste
-	asciiShader.setUniform2f("atlasSize", 16.0, 16.0); // for 16x16 grid
-	asciiShader.end();
-
+	if (b_Ascii) {
+		asciiShader.begin();
+		asciiShader.setUniformTexture("tex0", particlesFbo.getTexture(), 0);
+		asciiShader.setUniformTexture("asciiAtlas", asciiAtlas, 1);
+		asciiShader.setUniform1f("cellSize", atlasCellSize);
+		asciiShader.setUniform2f("atlasSize", atlasSize_grid.x, atlasSize_grid.y);
+		asciiShader.setUniform1f("scaleFont", asciiFontScale);
+		asciiShader.setUniform1f("charsetOffset", s_asciiCharsetOffset);
+	}
 	particlesFbo.draw(0, 0);
+
+	if (b_Ascii)
+		asciiShader.end();
+
 	post.end();
 
 	//-----------------------------------------------------------------------------------------------------------
@@ -161,7 +180,10 @@ void ofApp::draw() {
 	zoomBlur->setCenterX(ofLerp(zoomBlur->getCenterX(), centOffX, 0.5));
 	zoomBlur->setCenterY(ofLerp(zoomBlur->getCenterY(), centOffY, 0.5));
 
-	edgePass->setSaturation(ofLerp(edgePass->getSaturation(), centOffX, 0.3));
+	// delta with time to smooth travel all hue range
+	float delta = sin(ofGetElapsedTimef() * 0.5) * 0.5 + 0.5;
+
+	edgePass->setSaturation(ofLerp(edgePass->getSaturation(), delta, 0.3));
 #ifdef UI
 	uiManager.draw();
 #endif
@@ -341,9 +363,9 @@ void ofApp::applyFlowToPlayers() {
 		player1.move(ofVec2f(0, -player1.speed));
 
 	if (rightFlowVector.x > flowSensitivity)
-		player2.move(ofVec2f(0, player2.speed));
-	else if (rightFlowVector.x < -flowSensitivity)
 		player2.move(ofVec2f(0, -player2.speed));
+	else if (rightFlowVector.x < -flowSensitivity)
+		player2.move(ofVec2f(0, player2.speed));
 }
 
 
@@ -385,6 +407,7 @@ void ofApp::collision() {
 		ball.pos.y - ball.size.y / 2 < player1.pos.y + player1.size.y / 2 &&
 		ball.pos.y + ball.size.y / 2 > player1.pos.y - player1.size.y / 2) {
 		ball.dir.x *= -1;
+		ball.speed *= 1.01f;
 	}
 
 	if (ball.pos.x - ball.size.x / 2 < player2.pos.x + player2.size.x / 2 &&
@@ -392,6 +415,14 @@ void ofApp::collision() {
 		ball.pos.y - ball.size.y / 2 < player2.pos.y + player2.size.y / 2 &&
 		ball.pos.y + ball.size.y / 2 > player2.pos.y - player2.size.y / 2) {
 		ball.dir.x *= -1;
+		ball.speed *= 1.01f;
+
+		if (player2.getDirection().y == ball.dir.y) {
+			ball.speed *= 1.06f;
+		} else if (player2.getDirection().y == -ball.dir.y) {
+			ball.speed *= 0.87f;
+		} else
+			ball.speed *= 1.0f;
 	}
 }
 
@@ -437,6 +468,11 @@ void ofApp::keyPressed(int key) {
 				particle_size = 0.01f;
 			}
 			break;
+
+		case 'x':
+			b_Ascii = !b_Ascii;
+			break;
+
 		default:
 			break;
 	}
@@ -463,4 +499,21 @@ void ofApp::spacingChanged(int &spacing) {
 
 void ofApp::particleSizeChanged(float &particle_size) {
 	this->particle_size = particle_size;
+}
+
+void ofApp::postProcessingChanged(float &exposure) {
+	(void)exposure;
+	zoomBlur->setExposure(uiManager.exposure_s);
+	zoomBlur->setWeight(uiManager.weight_s);
+}
+
+void ofApp::asciiCellSizeChanged(float &size) {
+	atlasCellSize = size;
+}
+void ofApp::asciiSpreadChanged(float &spread) {
+	asciiFontScale = spread;
+}
+
+void ofApp::asciiOffsetChanged(float &offset) {
+	s_asciiCharsetOffset = offset;
 }
