@@ -8,8 +8,8 @@ void UIManager::setup() {
 	gui.add(weight_s.setup("Weight", 0.25f, 0.01f, 1.0f));
 
 	gui.add(cellSize_s.setup("Cell Size", 56.0f, 1.0f, 64.0f));
-	gui.add(spread_s.setup("spread", 1.0f, 1.0f, 80.0f));
-	gui.add(asciiOffset_s.setup("asciiOffset", 0.0f, 0.0f, 64.0f));
+	gui.add(spread_s.setup("spread", 1.0f, 1.0f, 256.0f));
+	gui.add(asciiOffset_s.setup("asciiOffset", 0.0f, 0.0f, 128.0f));
 }
 
 void UIManager::draw() {
