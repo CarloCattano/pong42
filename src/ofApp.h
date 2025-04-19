@@ -85,10 +85,11 @@ private:
 
 	float flowSensitivity;
 
-	float asciiFontScale;
+	float s_asciiFontScale;
 	ofVec2f atlasSize_grid;
 	float atlasCellSize;
 	float s_asciiCharsetOffset;
+	float s_asciiMix;
 
 	glm::vec2 leftFlowVector;
 	glm::vec2 rightFlowVector;
@@ -104,6 +105,7 @@ private:
 	void postProcessingChanged(float &exposure);
 	void asciiSpreadChanged(int &spread);
 	void asciiOffsetChanged(int &offset);
+	void asciiMixChanged(float &mix);
 
 	void collision();
 

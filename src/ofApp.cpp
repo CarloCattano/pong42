@@ -75,9 +75,9 @@ void ofApp::setup() {
 
 	uiManager.spread_s.addListener(this, &ofApp::asciiSpreadChanged);
 	uiManager.asciiOffset_s.addListener(this, &ofApp::asciiOffsetChanged);
+	uiManager.asciiMix_s.addListener(this, &ofApp::asciiMixChanged);
 
 	uiManager.setup();
-
 #endif
 
 	zoomBlur->setExposure(0.25);
@@ -85,19 +85,19 @@ void ofApp::setup() {
 	zoomBlur->setDecay(0.9);
 	zoomBlur->setDensity(0.1);
 
-
 	b_Ascii = true;
+	asciiShader.load("shaders/ascii.vert", "shaders/ascii.frag");
 
-	asciiFontScale = 1.0f;
-	asciiShader.load("ascii.vert", "ascii.frag");
 
-	atlasSize_grid = ofVec2f(16.0f, 16.0f);
+	s_asciiFontScale = 2.0f;
+
+	atlasSize_grid = ofVec2f(8.0f, 8.0f);
 	atlasCellSize = 32.0f;
-
 	asciiAtlas.setTextureMinMagFilter(GL_NEAREST, GL_NEAREST); // Prevents blurring
+	ofLoadImage(asciiAtlas, "fontmaps/VT323_8x8_32x32_101.png");
+
 
 	particlesFbo.allocate(WIN_W, WIN_H, GL_RGBA);
-	ofLoadImage(asciiAtlas, "16x16_32x32_22.png"); // Ensure this is a grayscale font atlas texture
 	//--------------------------------------------------------------------------------
 }
 //-----------------------------------------------------------------------------------------------------------
@@ -146,8 +146,10 @@ void ofApp::draw() {
 		asciiShader.setUniformTexture("asciiAtlas", asciiAtlas, 1);
 		asciiShader.setUniform1f("cellSize", atlasCellSize);
 		asciiShader.setUniform2f("atlasSize", atlasSize_grid.x, atlasSize_grid.y);
-		asciiShader.setUniform1f("scaleFont", asciiFontScale);
+		asciiShader.setUniform1f("scaleFont", s_asciiFontScale);
 		asciiShader.setUniform1f("charsetOffset", s_asciiCharsetOffset);
+		asciiShader.setUniform1f("time", ofGetElapsedTimef());
+		asciiShader.setUniform1f("shader_mix", s_asciiMix);
 	}
 	particlesFbo.draw(0, 0);
 
@@ -436,6 +438,8 @@ void ofApp::keyPressed(int key) {
 		return;
 	}
 
+	static int counter = 0;
+
 	switch (key) {
 		case OF_KEY_UP:
 			cvDownScale += 1.f;
@@ -473,7 +477,31 @@ void ofApp::keyPressed(int key) {
 			b_Ascii = !b_Ascii;
 			break;
 
-		default:
+		case 'm':
+
+			// TODO: Please move this out of here !
+			counter++;
+			unsigned int maps_count = 11;
+
+			std::string fontmaps[maps_count] = {
+				"fontmaps/LUMA_16x16_32x32_22.png",		   "fontmaps/LUMA_8x8x1616x12pt.png",
+				"fontmaps/LUMA_hack_16x16_32x32.png",	   "fontmaps/LUMA_ibm_8x8_64x64_28.png",
+				"fontmaps/LUMA_vt16x8_32x32_half.png",	   "fontmaps/LUMA_vt16x8_32x32_quarter.png",
+				"fontmaps/LUMA_vt16x8_32x64.png",		   "fontmaps/LUMA_vt16x8_32x64_glow.png",
+				"fontmaps/LUMA_VT323_8x8_128x128_101.png", "fontmaps/LUMA_VT323_8x8_32x32_101.png",
+				"fontmaps/LUMA_VT323_8x8_64x64_101.png",
+			};
+
+			counter = counter % maps_count;
+
+			ofLoadImage(asciiAtlas, fontmaps[counter]);
+			asciiShader.setUniformTexture("asciiAtlas", asciiAtlas, 1);
+			atlasCellSize = asciiAtlas.getWidth() / atlasSize_grid.x;
+			asciiShader.setUniform2f("atlasSize", atlasSize_grid.x, atlasSize_grid.y);
+
+			ofLogNotice() << "Fontmap: " << fontmaps[counter];
+			ofLogNotice() << "Atlas Size: " << asciiAtlas.getWidth() / atlasSize_grid.x;
+
 			break;
 	}
 }
@@ -508,9 +536,13 @@ void ofApp::postProcessingChanged(float &exposure) {
 }
 
 void ofApp::asciiSpreadChanged(int &spread) {
-	asciiFontScale = spread;
+	s_asciiFontScale = spread;
 }
 
 void ofApp::asciiOffsetChanged(int &offset) {
 	s_asciiCharsetOffset = offset;
+}
+
+void ofApp::asciiMixChanged(float &mix) {
+	s_asciiMix = mix;
 }

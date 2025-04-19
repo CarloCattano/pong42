@@ -16,4 +16,5 @@ public:
 
 	ofxIntSlider spread_s;
 	ofxIntSlider asciiOffset_s;
+	ofxFloatSlider asciiMix_s;
 };
