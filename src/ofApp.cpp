@@ -94,9 +94,7 @@ void ofApp::setup() {
 	atlasSize_grid = ofVec2f(8.0f, 8.0f);
 	atlasCellSize = 32.0f;
 	asciiAtlas.setTextureMinMagFilter(GL_NEAREST, GL_NEAREST); // Prevents blurring
-	ofLoadImage(asciiAtlas, "fontmaps/VT323_8x8_32x32_101.png");
-
-
+	ofLoadImage(asciiAtlas, "fontmaps/edges.png");
 	particlesFbo.allocate(WIN_W, WIN_H, GL_RGBA);
 	//--------------------------------------------------------------------------------
 }
@@ -132,11 +130,12 @@ void ofApp::draw() {
 	ofSetColor(255);
 
 	if (grayImage.bAllocated) {
+		ofSetColor(255, 255, 255, 50);
 		drawParticles();
+		ofSetColor(255, 255, 255, 255);
 	}
 
 	particlesFbo.end();
-
 
 	ofSetColor(255);
 
@@ -151,6 +150,7 @@ void ofApp::draw() {
 		asciiShader.setUniform1f("time", ofGetElapsedTimef());
 		asciiShader.setUniform1f("shader_mix", s_asciiMix);
 	}
+
 	particlesFbo.draw(0, 0);
 
 	if (b_Ascii)
@@ -475,6 +475,13 @@ void ofApp::keyPressed(int key) {
 
 		case 'x':
 			b_Ascii = !b_Ascii;
+			if (b_Ascii) {
+				ofLogNotice() << "ASCII SHADER ON";
+				asciiShader.load("shaders/ascii.vert", "shaders/ascii.frag");
+			} else {
+				ofLogNotice() << "ASCII OFF";
+			}
+
 			break;
 
 		case 'm':

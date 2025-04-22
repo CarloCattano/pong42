@@ -29,44 +29,62 @@ vec4 getGlyph(sampler2DRect asciiAtlas, vec2 atlasUV) {
 	return glyph;
 }
 
+vec2 sobel(vec2 uv) {
+    float gx = 0.0;
+    float gy = 0.0;
+
+    // Sobel kernels for x and y gradients
+    float kernelX[9];
+    float kernelY[9];
+
+    kernelX[0] = -1.0; kernelX[1] = 0.0; kernelX[2] = 1.0;
+    kernelX[3] = -2.0; kernelX[4] = 0.0; kernelX[5] = 2.0;
+    kernelX[6] = -1.0; kernelX[7] = 0.0; kernelX[8] = 1.0;
+
+    kernelY[0] = -1.0; kernelY[1] = -2.0; kernelY[2] = -1.0;
+    kernelY[3] =  0.0; kernelY[4] =  0.0; kernelY[5] =  0.0;
+    kernelY[6] =  1.0; kernelY[7] =  2.0; kernelY[8] =  1.0;
+
+    int idx = 0;
+    vec2 offset;
+    vec2 texCoord;
+    float sampleLum;
+
+    for (int y = -1; y <= 1; y++) {
+        for (int x = -1; x <= 1; x++) {
+            offset = vec2(float(x), float(y));
+            texCoord = uv + offset;
+            vec3 col = texture2DRect(tex0, texCoord).rgb;
+            sampleLum = dot(col, vec3(0.299, 0.587, 0.114));
+            gx += sampleLum * kernelX[idx];
+            gy += sampleLum * kernelY[idx];
+            idx++;
+        }
+    }
+
+    return vec2(gx, gy);
+}
+
 void main() {
 
 	vec4 originalColor = texture2DRect(tex0, fragCoord);
-
 	float brightness = cellLuma(fragCoord);
 	float charIndex = floor(((brightness) * scaleFont) + charsetOffset);
-
 	charIndex = clamp(charIndex, 0.0, atlasSize.x * atlasSize.y - 1.0);
 
 	float row = floor(charIndex / atlasSize.x);
-    float col = mod(charIndex, atlasSize.x);
+	float col = mod(charIndex, atlasSize.x);
 
 	vec2 localUV = mod(fragCoord, cellSize) / cellSize;
 	vec2 charUV = localUV;
 
-    vec2 atlasUV = (vec2(col, row) + charUV) * cellSize;
-    vec4 glyph = getGlyph(asciiAtlas, atlasUV);
+	vec2 atlasUV = (vec2(col, row) + charUV) * cellSize;
+	vec4 glyph = getGlyph(asciiAtlas, atlasUV);
 
-    float glyphMask = glyph.r;
+	float glyphMask = glyph.r;
 	vec4 asciiColor = vec4(sample.rgb * glyphMask, 1.0);
-
-	 if (asciiColor.r <= 0.01 && asciiColor.g <= 0.01 && asciiColor.b <= 0.01) {
-	 	float radius = 3.0;
-	 	vec2 center = fragCoord - vec2(radius, radius);
-	 	float dist = distance(center, fragCoord);
-	 	if (dist < radius) {
-	 		asciiColor = vec4(0.0, 0.0, 0.0, 1.0);
-	 	}
-	 }
-
-	 // rudimentary contours
-	 float threshold = 0.1;
-	 float edge = step(threshold, abs(sample.r - originalColor.r));
-	 edge += step(threshold, abs(sample.g - originalColor.g));
-	 edge += step(threshold, abs(sample.b - originalColor.b));
-	 edge = clamp(edge, 0.0, 1.0);
-	 asciiColor = mix(asciiColor, vec4(0.0, 0.0, 0.0, 1.0), edge);
 
 	gl_FragColor = mix(originalColor, asciiColor, shader_mix);
 }
 
+// vim:ft=glsl
