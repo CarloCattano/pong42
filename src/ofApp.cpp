@@ -199,7 +199,7 @@ void ofApp::draw() {
 
 	if (b_Ascii) {
 		asciiShader.begin();
-		asciiShader.setUniformTexture("tex0", particlesFbo.getTexture(), 0);
+		asciiShader.setUniformTexture("tex0", colorImg.getTexture(), 0);
 		asciiShader.setUniformTexture("asciiAtlas", asciiAtlas, 1);
 		asciiShader.setUniform1f("cellSize", atlasCellSize);
 		asciiShader.setUniform2f("atlasSize", atlasSize_grid.x, atlasSize_grid.y);
