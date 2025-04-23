@@ -128,11 +128,15 @@ private:
 	void applyFlowToPlayers();
 
 
-	void loadTextureFromFile(int &counter);
-
+	void loadTextureFromFile(int index);
+	void loadMapNames();
 
 	int sourceWidth;
 	int sourceHeight;
 
 	UIManager uiManager;
+
+	float scaleParameter(float param, float scale, float base = 0.0f) {
+		return base + (param / 1000.0f) * scale;
+	}
 };

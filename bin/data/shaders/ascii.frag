@@ -2,9 +2,10 @@
 
 uniform sampler2DRect tex0;        // Source texture (particlesFbo)
 uniform sampler2DRect asciiAtlas;  // ASCII texture atlas
+
 uniform float cellSize;            // Size of each ASCII cell in pixels
-uniform vec2 atlasSize;           // Size of the ASCII atlas in characters (width, height)
 uniform float scaleFont;
+uniform vec2 atlasSize;           // Size of the ASCII atlas in characters (width, height)
 uniform float charsetOffset;      // Offset to start from in the ASCII table
 
 uniform float time;

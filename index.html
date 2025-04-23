@@ -1,0 +1,341 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>OF Control Panel</title>
+    <style>
+      :root {
+        --bg: #111827;
+        --panel: #1f2937;
+        --accent: #3b82f6;
+        --text: #f3f4f6;
+        --slider-bg: #374151;
+      }
+
+      body {
+        margin: 0;
+        padding: 1rem;
+        background-color: var(--bg);
+        color: var(--text);
+        font-family: "Segoe UI", sans-serif;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 1.5rem;
+      }
+
+      h1 {
+        font-size: 1.75rem;
+        margin: 0;
+      }
+
+      .grid {
+        display: grid;
+        gap: 1.5rem;
+        width: 100%;
+        max-width: 1000px;
+      }
+
+      .toggles {
+        grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+      }
+
+      .sliders {
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      }
+
+      .control {
+        background-color: var(--panel);
+        border-radius: 0.4rem;
+        padding: 0.75rem;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        text-align: center;
+        height: 200px;
+        touch-action: manipulation;
+        position: relative;
+      }
+
+      .control__label {
+        position: absolute;
+        /* top: 0.75rem; */
+        left: 20%;
+        font-size: 0.875rem;
+        text-align: center;
+        opacity: 0.7;
+        z-index: 2;
+        pointer-events: none;
+      }
+
+      /* Toggle Button */
+      .toggle-button {
+        width: 100%;
+        height: 60px;
+        background-color: var(--slider-bg);
+        border-radius: 0.5rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        -webkit-tap-highlight-color: transparent;
+      }
+
+      .toggle-button__indicator {
+        width: 80%;
+        height: 100%;
+        background-color: transparent;
+        border-radius: 0.5rem;
+        transition: background-color 0.1s ease-in-out;
+      }
+
+      .toggle-button.on .toggle-button__indicator {
+        background-color: var(--accent);
+      }
+
+      .toggle-input {
+        opacity: 0;
+        width: 100%;
+        height: 100%;
+        position: absolute;
+        cursor: pointer;
+      }
+
+      /* Minimalistic Slider */
+      .minimal-slider-container {
+        width: 100%;
+        /* Increased height for thicker slider */
+        height: 250px;
+        background-color: var(--slider-bg);
+        border-radius: 0.375rem; /* Adjust border-radius for thicker slider */
+        position: relative;
+        display: flex;
+        align-items: center; /* Center the fill vertically */
+        overflow: hidden; /* Clip the fill to the container */
+      }
+
+      .minimal-slider-fill {
+        position: absolute;
+        top: 0;
+        left: 0;
+        height: 100%;
+        background-color: var(--accent);
+        border-radius: 0.375rem; /* Match container border-radius */
+        width: 50%; /* Initial fill */
+      }
+
+      .minimal-slider-input {
+        -webkit-appearance: none;
+        -moz-appearance: none;
+        appearance: none;
+        width: 100%;
+        height: 100%;
+        background: transparent;
+        cursor: pointer;
+        position: absolute;
+        top: 0;
+        left: 0;
+      }
+
+      .minimal-slider-input::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        appearance: none;
+        width: 0;
+        height: 0;
+        background: transparent;
+        cursor: pointer;
+      }
+
+      .minimal-slider-input::-moz-range-thumb {
+        width: 0;
+        height: 0;
+        background: transparent;
+        cursor: pointer;
+        border: none;
+      }
+
+      .minimal-slider-input::-ms-thumb {
+        width: 0;
+        height: 0;
+        background: transparent;
+        cursor: pointer;
+        border: none;
+      }
+
+      @media (max-width: 600px) {
+        body {
+          padding: 0.75rem;
+          gap: 1rem;
+        }
+
+        h1 {
+          font-size: 1.5rem;
+        }
+
+        .control {
+          height: 100px;
+          padding: 1rem;
+        }
+
+        .control__label {
+          font-size: 0.75rem;
+          z-index: 3;
+        }
+
+        .toggle-button {
+          height: 90px;
+        }
+
+        .minimal-slider-container {
+          height: 200px; /* Adjust for smaller screens */
+          border-radius: 0.3rem;
+        }
+
+        .minimal-slider-fill {
+          border-radius: 0.3rem;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <h1>OF Control Panel</h1>
+
+    <div class="grid toggles" id="toggles"></div>
+    <div class="grid sliders" id="sliders"></div>
+
+    <script>
+      // We need a set of names maped to the control name
+      /*
+        toggle_0 : ascii on/off
+        toggle_1 : zoomBlur on/off
+        toggle_2 : edgePass on/off
+        toggle_3 : glow on/off
+
+        slider_0 : particle spacing
+        slider_1 : particle size
+
+        slider_6 : ascii spread
+        slider_7 : ascii Offset
+        slider_8 : ascii mix
+      */
+
+      let toggleNames = ["ascii", "zoomBlur", "edgePass", "glow"];
+
+      let sliderNames = [
+        "particleSpacing",
+        "particleSize",
+        "zBloomWeight",
+        "zBDecay",
+        "zBExposure",
+        "zBDensity",
+        "asciiSpread",
+        "asciiOffset",
+        "asciiMix",
+        "asciiSet",
+      ];
+
+      const socket = new WebSocket("wss://ws.42ls.online/client-ws");
+
+      socket.onopen = () => {
+        console.log("Connected to backend");
+      };
+
+      socket.onmessage = (event) => {
+        const { id, param } = JSON.parse(event.data);
+        const el = document.getElementById(id);
+        if (el) {
+          if (el.type === "checkbox") {
+            const toggleButton = el.closest(".toggle-button");
+            if (toggleButton) {
+              toggleButton.classList.toggle("on", !!param);
+            }
+            el.checked = !!param;
+          } else if (el.type === "range") {
+            el.value = param;
+            const fill = el.previousElementSibling;
+            if (fill) {
+              fill.style.width = `${(param / el.max) * 100}%`;
+            }
+          }
+        }
+      };
+
+      function sendMessage(id, value) {
+        socket.send(
+          JSON.stringify({
+            id,
+            param: parseInt(value),
+            total_parameters: 24,
+          }),
+        );
+      }
+
+      const toggleContainer = document.getElementById("toggles");
+      for (let i = 0; i < 8; i++) {
+        const div = document.createElement("div");
+        div.className = "control";
+
+        const label = document.createElement("label");
+        label.className = "control__label";
+        // label.textContent = `Toggle ${i}`;
+        label.textContent = toggleNames[i] || `Toggle ${i}`;
+
+        const toggleButton = document.createElement("div");
+        toggleButton.className = "toggle-button";
+
+        const indicator = document.createElement("div");
+        indicator.className = "toggle-button__indicator";
+
+        const checkbox = document.createElement("input");
+        checkbox.type = "checkbox";
+        checkbox.className = "toggle-input";
+        checkbox.id = `toggle_${i}`;
+        checkbox.onchange = () => {
+          toggleButton.classList.toggle("on", checkbox.checked);
+          sendMessage(checkbox.id, checkbox.checked ? 1 : 0);
+        };
+
+        toggleButton.appendChild(indicator);
+        toggleButton.appendChild(checkbox);
+        div.appendChild(label);
+        div.appendChild(toggleButton);
+        toggleContainer.appendChild(div);
+      }
+
+      const sliderContainer = document.getElementById("sliders");
+      for (let i = 0; i < 16; i++) {
+        const div = document.createElement("div");
+        div.className = "control";
+
+        const label = document.createElement("label");
+        label.className = "control__label";
+        label.textContent = sliderNames[i] || `Slider ${i}`;
+
+        const sliderContainerDiv = document.createElement("div");
+        sliderContainerDiv.className = "minimal-slider-container";
+
+        const sliderFill = document.createElement("div");
+        sliderFill.className = "minimal-slider-fill";
+
+        const slider = document.createElement("input");
+        slider.type = "range";
+        slider.min = 0;
+        slider.max = 1000;
+        slider.value = 500;
+        slider.className = "minimal-slider-input";
+        slider.id = `slider_${i}`;
+        slider.oninput = () => {
+          sliderFill.style.width = `${(slider.value / slider.max) * 100}%`;
+          sendMessage(slider.id, slider.value);
+        };
+
+        sliderContainerDiv.appendChild(sliderFill);
+        sliderContainerDiv.appendChild(slider);
+        div.appendChild(label);
+        div.appendChild(sliderContainerDiv);
+        sliderContainer.appendChild(div);
+      }
+    </script>
+  </body>
+</html>

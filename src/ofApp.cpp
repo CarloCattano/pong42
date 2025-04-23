@@ -12,9 +12,16 @@ ofxCvGrayscaleImage depthProcessed;
 ofxCvContourFinder depthContours;
 ofxCvColorImage colorImageRGB;
 
-
-float scaleParameter(float param, float scale, float base = 0.0f) {
-	return base + (param / 1000.0f) * scale;
+void ofApp::loadMapNames() {
+	ofDirectory dir;
+	dir.allowExt("png");
+	dir.listDir("fontmaps");
+	dir.sort();
+	maps_count = dir.size() - 1;
+	fontmaps.resize(maps_count);
+	for (unsigned int i = 0; i < maps_count - 1; i++) {
+		fontmaps[i] = dir.getPath(i);
+	}
 }
 
 void ofApp::setup() {
@@ -92,10 +99,10 @@ void ofApp::setup() {
 	zoomBlur->setDecay(0.9);
 	zoomBlur->setDensity(0.1);
 
+	loadMapNames();
+
 	b_Ascii = true;
 	asciiShader.load("shaders/ascii.vert", "shaders/ascii.frag");
-
-
 	s_asciiFontScale = 2.0f;
 
 	atlasSize_grid = ofVec2f(8.0f, 8.0f);
@@ -103,21 +110,6 @@ void ofApp::setup() {
 	asciiAtlas.setTextureMinMagFilter(GL_NEAREST, GL_NEAREST); // Prevents blurring
 	ofLoadImage(asciiAtlas, "fontmaps/edges.png");
 	particlesFbo.allocate(WIN_W, WIN_H, GL_RGBA);
-
-
-	ofDirectory dir;
-	dir.allowExt("png");
-	dir.listDir("fontmaps");
-	dir.sort();
-	maps_count = dir.size() - 1;
-
-	fontmaps.resize(maps_count);
-
-
-	for (unsigned int i = 0; i < maps_count - 1; i++) {
-		fontmaps[i] = dir.getPath(i);
-	}
-
 
 	// WEBSOCKET WIP
 	webSocket.onMessage = [&](const std::string &msg) { ofLogNotice() << "Received: " << msg; };
@@ -133,11 +125,12 @@ void ofApp::setup() {
 		{ "slider_1", [this](float val) { particle_size = scaleParameter(val, 5.0f, 0.1f); } },
 		{ "slider_2", [this](float val) { zoomBlur->setWeight(scaleParameter(val, 1.5f, 0.5)); } },
 		{ "slider_3", [this](float val) { zoomBlur->setDecay(scaleParameter(val, 0.9f)); } },
-		{ "slider_5", [this](float val) { zoomBlur->setDensity(scaleParameter(val, 0.1f)); } },
 		{ "slider_4", [this](float val) { zoomBlur->setExposure(scaleParameter(val, 1.0f)); } },
+		{ "slider_5", [this](float val) { zoomBlur->setDensity(scaleParameter(val, 0.1f)); } },
 		{ "slider_6", [this](float val) { s_asciiFontScale = scaleParameter(val, 120.0f, 1.0); } },
 		{ "slider_7", [this](float val) { s_asciiCharsetOffset = scaleParameter(val, 64.0); } },
 		{ "slider_8", [this](float val) { s_asciiMix = scaleParameter(val, 1.0f); } },
+		{ "slider_9", [this](float val) { loadTextureFromFile(floor((val / 1000.0f) * maps_count)); } },
 	};
 
 	togglesHandlers = {
@@ -494,8 +487,9 @@ void ofApp::collision() {
 }
 
 
-void ofApp::loadTextureFromFile(int &counter) {
-	ofLoadImage(asciiAtlas, fontmaps[counter]);
+void ofApp::loadTextureFromFile(int index) {
+	index = (int)index % maps_count;
+	ofLoadImage(asciiAtlas, fontmaps[index]);
 	asciiShader.setUniformTexture("asciiAtlas", asciiAtlas, 1);
 	atlasCellSize = asciiAtlas.getWidth() / atlasSize_grid.x;
 	asciiShader.setUniform2f("atlasSize", atlasSize_grid.x, atlasSize_grid.y);
@@ -560,7 +554,6 @@ void ofApp::keyPressed(int key) {
 			break;
 
 		case 'm':
-			counter++;
 			counter = counter % maps_count;
 			ofLoadImage(asciiAtlas, fontmaps[counter]);
 			asciiShader.setUniformTexture("asciiAtlas", asciiAtlas, 1);
