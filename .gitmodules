@@ -1,0 +1,4 @@
+[submodule "libs/websocketpp"]
+	path = libs/websocketpp
+	url = https://github.com/jcelerier/websocketpp.git
+	branch = ossia/2024-12-18
