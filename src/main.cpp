@@ -11,7 +11,7 @@ int main() {
 	//
 	// ofRunApp(window, std::make_shared<ofApp>());
 	// ofRunMainLoop();
-	ofSetupOpenGL(1024, 768, OF_FULLSCREEN); // <-------- setup the GL context
+	ofSetupOpenGL(1024, 768, OF_WINDOW); // <-------- setup the GL context
 
 	// settings.setGLVersion(3, 2);
 	// this kicks off the running of my app

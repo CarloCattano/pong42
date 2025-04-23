@@ -1,4 +1,6 @@
 #include "ofApp.h"
+#include <functional>
+#include <unordered_map>
 #include "EdgePass.h"
 #include "Player.hpp"
 #include "fwd.hpp"
@@ -9,6 +11,11 @@ ofxCvGrayscaleImage depthOrig;
 ofxCvGrayscaleImage depthProcessed;
 ofxCvContourFinder depthContours;
 ofxCvColorImage colorImageRGB;
+
+
+float scaleParameter(float param, float scale, float base = 0.0f) {
+	return base + (param / 1000.0f) * scale;
+}
 
 void ofApp::setup() {
 	WIN_W = ofGetWidth();
@@ -59,8 +66,8 @@ void ofApp::setup() {
 	// Setup post-processing chain
 	post.init(WIN_W, WIN_H);
 
-	post.createPass<BloomPass>()->setEnabled(true);
-	post.createPass<ZoomBlurPass>()->setEnabled(true);
+	post.createPass<BloomPass>()->setEnabled(false);
+	post.createPass<ZoomBlurPass>()->setEnabled(false);
 	post.createPass<EdgePass>()->setEnabled(false);
 
 	zoomBlur = dynamic_cast<ZoomBlurPass *>(post[1].get());
@@ -96,8 +103,51 @@ void ofApp::setup() {
 	asciiAtlas.setTextureMinMagFilter(GL_NEAREST, GL_NEAREST); // Prevents blurring
 	ofLoadImage(asciiAtlas, "fontmaps/edges.png");
 	particlesFbo.allocate(WIN_W, WIN_H, GL_RGBA);
-	//--------------------------------------------------------------------------------
+
+
+	ofDirectory dir;
+	dir.allowExt("png");
+	dir.listDir("fontmaps");
+	dir.sort();
+	maps_count = dir.size() - 1;
+
+	fontmaps.resize(maps_count);
+
+
+	for (unsigned int i = 0; i < maps_count - 1; i++) {
+		fontmaps[i] = dir.getPath(i);
+	}
+
+
+	// WEBSOCKET WIP
+	webSocket.onMessage = [&](const std::string &msg) { ofLogNotice() << "Received: " << msg; };
+	webSocket.connect("ws://ws.42ls.online/of-ws");
+
+	sliderHandlers = {
+		{ "slider_0",
+		  [this](float val) {
+			  spacing = scaleParameter(val, 128.0f, 10.0f);
+			  spacing = ofClamp(spacing, 10.0f, 128.0f);
+			  generateParticles(WIN_W, WIN_H);
+		  } },
+		{ "slider_1", [this](float val) { particle_size = scaleParameter(val, 5.0f, 0.1f); } },
+		{ "slider_2", [this](float val) { zoomBlur->setWeight(scaleParameter(val, 1.5f, 0.5)); } },
+		{ "slider_3", [this](float val) { zoomBlur->setDecay(scaleParameter(val, 0.9f)); } },
+		{ "slider_5", [this](float val) { zoomBlur->setDensity(scaleParameter(val, 0.1f)); } },
+		{ "slider_4", [this](float val) { zoomBlur->setExposure(scaleParameter(val, 1.0f)); } },
+		{ "slider_6", [this](float val) { s_asciiFontScale = scaleParameter(val, 120.0f, 1.0); } },
+		{ "slider_7", [this](float val) { s_asciiCharsetOffset = scaleParameter(val, 64.0); } },
+		{ "slider_8", [this](float val) { s_asciiMix = scaleParameter(val, 1.0f); } },
+	};
+
+	togglesHandlers = {
+		{ "toggle_0", [this](int val) { val == 1 ? b_Ascii = true : b_Ascii = false; } },
+		{ "toggle_1", [this](int val) { zoomBlur->setEnabled(val); } },
+		{ "toggle_2", [this](int val) { edgePass->setEnabled(val); } },
+		{ "toggle_3", [this](int val) { post[0]->setEnabled(val); } },
+	};
 }
+
 //-----------------------------------------------------------------------------------------------------------
 void ofApp::update() {
 	updateCamera();
@@ -116,6 +166,21 @@ void ofApp::update() {
 	player2.update();
 
 	collision();
+
+	// update params from websocket
+	if (webSocket.isConnected) {
+		ofWebSocket::ParsedData data = webSocket.parsedData;
+
+		auto it = sliderHandlers.find(data.id);
+		if (it != sliderHandlers.end()) {
+			it->second(data.param);
+		}
+
+		auto t_it = togglesHandlers.find(data.id);
+		if (t_it != togglesHandlers.end()) {
+			t_it->second(data.param);
+		}
+	}
 }
 
 
@@ -183,9 +248,9 @@ void ofApp::draw() {
 	zoomBlur->setCenterY(ofLerp(zoomBlur->getCenterY(), centOffY, 0.5));
 
 	// delta with time to smooth travel all hue range
-	float delta = sin(ofGetElapsedTimef() * 0.5) * 0.5 + 0.5;
+	float delta = ofMap(ofGetElapsedTimef(), 0, 1, 0, 1);
 
-	edgePass->setSaturation(ofLerp(edgePass->getSaturation(), delta, 0.3));
+	edgePass->setHue(ofLerp(edgePass->getSaturation(), 0.0f, delta));
 #ifdef UI
 	uiManager.draw();
 #endif
@@ -429,18 +494,31 @@ void ofApp::collision() {
 }
 
 
+void ofApp::loadTextureFromFile(int &counter) {
+	ofLoadImage(asciiAtlas, fontmaps[counter]);
+	asciiShader.setUniformTexture("asciiAtlas", asciiAtlas, 1);
+	atlasCellSize = asciiAtlas.getWidth() / atlasSize_grid.x;
+	asciiShader.setUniform2f("atlasSize", atlasSize_grid.x, atlasSize_grid.y);
+}
+
+
 // CALLBACKS
 //-----------------------------------------------------------------------------------------------------------
 void ofApp::keyPressed(int key) {
-	unsigned idx = key - '0';
-	if (idx < post.size()) {
-		post[idx]->setEnabled(!post[idx]->getEnabled());
-		return;
-	}
+	// unsigned idx = key - '0';
+	// if (idx < post.size()) {
+	// 	post[idx]->setEnabled(!post[idx]->getEnabled());
+	// 	return;
+	// }
 
 	static int counter = 0;
 
 	switch (key) {
+		case 'q':
+			webSocket.close();
+			ofExit();
+			break;
+
 		case OF_KEY_UP:
 			cvDownScale += 1.f;
 			break;
@@ -478,37 +556,16 @@ void ofApp::keyPressed(int key) {
 			if (b_Ascii) {
 				ofLogNotice() << "ASCII SHADER ON";
 				asciiShader.load("shaders/ascii.vert", "shaders/ascii.frag");
-			} else {
-				ofLogNotice() << "ASCII OFF";
 			}
-
 			break;
 
 		case 'm':
-
-			// TODO: Please move this out of here !
 			counter++;
-			unsigned int maps_count = 11;
-
-			std::string fontmaps[maps_count] = {
-				"fontmaps/LUMA_16x16_32x32_22.png",		   "fontmaps/LUMA_8x8x1616x12pt.png",
-				"fontmaps/LUMA_hack_16x16_32x32.png",	   "fontmaps/LUMA_ibm_8x8_64x64_28.png",
-				"fontmaps/LUMA_vt16x8_32x32_half.png",	   "fontmaps/LUMA_vt16x8_32x32_quarter.png",
-				"fontmaps/LUMA_vt16x8_32x64.png",		   "fontmaps/LUMA_vt16x8_32x64_glow.png",
-				"fontmaps/LUMA_VT323_8x8_128x128_101.png", "fontmaps/LUMA_VT323_8x8_32x32_101.png",
-				"fontmaps/LUMA_VT323_8x8_64x64_101.png",
-			};
-
 			counter = counter % maps_count;
-
 			ofLoadImage(asciiAtlas, fontmaps[counter]);
 			asciiShader.setUniformTexture("asciiAtlas", asciiAtlas, 1);
 			atlasCellSize = asciiAtlas.getWidth() / atlasSize_grid.x;
 			asciiShader.setUniform2f("atlasSize", atlasSize_grid.x, atlasSize_grid.y);
-
-			ofLogNotice() << "Fontmap: " << fontmaps[counter];
-			ofLogNotice() << "Atlas Size: " << asciiAtlas.getWidth() / atlasSize_grid.x;
-
 			break;
 	}
 }

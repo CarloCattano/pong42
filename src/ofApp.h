@@ -5,10 +5,10 @@
 #include "UIManager.h"
 #include "ofMain.h"
 #include "ofTrueTypeFont.h"
+#include "ofWebSocket.h"
 #include "ofxGui.h"
 #include "ofxOpenCv.h"
 #include "ofxPostProcessing.h"
-
 
 #define PARTICLES
 #define UI
@@ -73,6 +73,15 @@ public:
 	ofFbo particlesFbo;
 	ofTexture asciiAtlas;
 
+	ofWebSocket webSocket;
+	std::unordered_map<std::string, std::function<void(float)> > sliderHandlers;
+	std::unordered_map<std::string, std::function<void(int)> > togglesHandlers;
+
+	// init empty array to be resized late
+	// of strings
+	std::vector<std::string> fontmaps;
+	unsigned int maps_count;
+
 private:
 	unsigned short int WIN_H;
 	unsigned short int WIN_W;
@@ -117,6 +126,10 @@ private:
 	void calculateOpticalFlow();
 	void updateParticles();
 	void applyFlowToPlayers();
+
+
+	void loadTextureFromFile(int &counter);
+
 
 	int sourceWidth;
 	int sourceHeight;
