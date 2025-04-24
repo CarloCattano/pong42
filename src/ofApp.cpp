@@ -61,6 +61,7 @@ void ofApp::setup() {
 	fpsFont.load(ofToDataPath("verdana.ttf"), 22, true, true);
 
 	cam.setVerbose(false);
+	cam.setDesiredFrameRate(60);
 	cam.setup(1280, 720);
 
 	sourceWidth = cam.getWidth();
