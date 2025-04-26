@@ -140,6 +140,9 @@ void ofApp::setup() {
 		{ "toggle_2", [this](int val) { edgePass->setEnabled(val); } },
 		{ "toggle_3", [this](int val) { post[0]->setEnabled(val); } },
 	};
+
+
+	classify.setup("yolov5n.onnx", "classes.txt", true);
 }
 
 //-----------------------------------------------------------------------------------------------------------
@@ -225,6 +228,16 @@ void ofApp::draw() {
 	ball.move(player1, player2);
 
 	ball.draw();
+
+
+	ofNoFill();
+	ofSetColor(255, 0, 255);
+	for (auto res : results) {
+		auto rect = res.rect;
+		ofDrawRectangle(rect);
+		ofDrawBitmapStringHighlight(res.label, rect.getTopLeft());
+	}
+
 
 	ofSetColor(255, 255, 255);
 	scoreBoard.drawString("SCORE : " + ofToString(player1.score) + " | " + ofToString(player2.score), WIN_W / 3.0, 40);
@@ -341,6 +354,10 @@ void ofApp::AllocateImages() {
 void ofApp::processNewFrame() {
 	colorImg.setFromPixels(cam.getPixels());
 	grayImage = colorImg;
+
+	auto cvMat = cv::cvarrToMat(colorImg.getCvImage());
+	results = classify.classifyFrame(cvMat);
+
 
 	if (bMirror)
 		grayImage.mirror(false, true);

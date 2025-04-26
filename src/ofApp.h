@@ -10,6 +10,9 @@
 #include "ofxOpenCv.h"
 #include "ofxPostProcessing.h"
 
+#include "yolo5ImageClassify.h"
+
+
 #define PARTICLES
 #define UI
 
@@ -40,13 +43,13 @@ public:
 
 	ofxCvColorImage colorImg;
 	ofxCvGrayscaleImage grayImage;
-
 	ofxCvGrayscaleImage currentImage;
 
 	cv::Mat previousMat;
 	cv::Mat flowMat;
 
 	vector<Particle> particles;
+
 
 	bool bMirror;
 	bool bContrastStretch;
@@ -81,6 +84,12 @@ public:
 	// of strings
 	std::vector<std::string> fontmaps;
 	unsigned int maps_count;
+
+
+	yolo5ImageClassify classify;
+
+	vector<yolo5ImageClassify::Result> results;
+
 
 private:
 	unsigned short int WIN_H;

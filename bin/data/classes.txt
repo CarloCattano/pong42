@@ -1,0 +1,34 @@
+person
+cat
+dog
+backpack
+umbrella
+handbag
+tie
+suitcase
+skateboard
+bottle
+wine glass
+cup
+fork
+knife
+spoon
+bowl
+banana
+apple
+sandwich
+orange
+chair
+sofa
+pottedplant
+diningtable
+toilet
+laptop
+mouse
+remote
+keyboard
+cell phone
+book
+clock
+scissors
+teddy bear
