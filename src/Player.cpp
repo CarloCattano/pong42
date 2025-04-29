@@ -5,7 +5,7 @@ Player::Player(ofVec2f pos, ofVec2f size) {
 	this->pos = pos;
 	this->size = size;
 	this->score = 0;
-	this->speed = 4.0;
+	this->speed = 6.0;
 	this->direction = ofVec2f(0, 1);
 }
 

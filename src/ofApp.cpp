@@ -37,15 +37,15 @@ void ofApp::setup() {
 	bgColor = ofColor(0, 0, 0, 255);
 
 	particle_size = 2.0f;
-	spacing = 14;
+	spacing = 20;
 	flowSensitivity = 0.1f;
 	blurAmount = 1;
-	bMirror = true;
+	bMirror = false;
 	cvDownScale = 16;
 	bContrastStretch = true;
 
 	// store a minimum squared value to apply flow velocity
-	minLengthSquared = 0.8 * 0.8; // 0.5 pixel squared
+	minLengthSquared = 0.5 * 0.5; // 0.5 pixel squared
 
 	ofVec2f paddleSize(64, 256);
 	float centeredY = (WIN_H - paddleSize.y) / 2.0;
@@ -102,6 +102,7 @@ void ofApp::setup() {
 
 	loadMapNames();
 
+	counter = 0;
 	b_Ascii = true;
 	asciiShader.load("shaders/ascii.vert", "shaders/ascii.frag");
 	s_asciiFontScale = 2.0f;
@@ -140,7 +141,6 @@ void ofApp::setup() {
 		{ "toggle_2", [this](int val) { edgePass->setEnabled(val); } },
 		{ "toggle_3", [this](int val) { post[0]->setEnabled(val); } },
 	};
-
 
 	classify.setup("yolov5n.onnx", "classes.txt", true);
 }
@@ -188,13 +188,14 @@ void ofApp::draw() {
 
 	particlesFbo.begin();
 
-	ofBackgroundGradient(ofColor(0), bgColor);
+	ofBackgroundGradient(ofColor(100), bgColor);
 	ofSetColor(255);
 
 	if (grayImage.bAllocated) {
-		ofSetColor(255, 255, 255, 50);
-		drawParticles();
 		ofSetColor(255, 255, 255, 255);
+		drawParticles();
+		ofSetColor(255, 255, 255, 200);
+		drawDetectedObjects();
 	}
 
 	particlesFbo.end();
@@ -213,10 +214,13 @@ void ofApp::draw() {
 		asciiShader.setUniform1f("shader_mix", s_asciiMix);
 	}
 
+	ball.draw();
 	particlesFbo.draw(0, 0);
+
 
 	if (b_Ascii)
 		asciiShader.end();
+
 
 	post.end();
 
@@ -228,16 +232,6 @@ void ofApp::draw() {
 	ball.move(player1, player2);
 
 	ball.draw();
-
-
-	ofNoFill();
-	ofSetColor(255, 0, 255);
-	for (auto res : results) {
-		auto rect = res.rect;
-		ofDrawRectangle(rect);
-		ofDrawBitmapStringHighlight(res.label, rect.getTopLeft());
-	}
-
 
 	ofSetColor(255, 255, 255);
 	scoreBoard.drawString("SCORE : " + ofToString(player1.score) + " | " + ofToString(player2.score), WIN_W / 3.0, 40);
@@ -263,6 +257,39 @@ void ofApp::draw() {
 #endif
 }
 
+void ofApp::drawDetectedObjects() {
+	if (!bNewFrame) {
+		return;
+	}
+	if (!colorImg.bAllocated) {
+		return;
+	}
+
+	// Set drawing properties
+	ofNoFill();
+	ofSetColor(255, 0, 255, 255);
+
+	// Scale factors based on the current video feed size and window size
+	float scaleX = (float)WIN_W / colorImg.getWidth();	// Use actual video frame width (colorImg.getWidth())
+	float scaleY = (float)WIN_H / colorImg.getHeight(); // Use actual video frame height (colorImg.getHeight())
+
+	// Draw each detected object as a scaled rectangle
+	for (auto res : results) {
+		auto rect = res.rect;
+
+		// Scale the rect based on the current video feed resolution
+		ofRectangle scaledRect(rect.x * scaleX, rect.y * scaleY, rect.width * scaleX, rect.height * scaleY);
+
+		// Draw the scaled rectangle
+		ofDrawRectangle(scaledRect);
+
+		// Draw label at the scaled position
+		ofDrawBitmapStringHighlight(res.label, scaledRect.getTopLeft());
+	}
+
+	// Re-enable filling
+	ofFill();
+}
 
 //-----------------------------------------------------------------------------------------------------------
 
@@ -274,10 +301,12 @@ void ofApp::generateParticles(int s_width, int s_height) {
 
 	float delta = 1.0f;
 
+	float offset = spacing * delta;
+
 	for (int x = 0; x < numx; x++) {
 		for (int y = 0; y < numy; y++) {
-			glm::vec2 pos(spacing * delta + (float)x * spacing, spacing * delta + (float)y * spacing);
-
+			// glm::vec2 pos(spacing * delta + (float)x * spacing, spacing * delta + (float)y * spacing);
+			glm::vec2 pos(offset + x * spacing, offset + y * spacing);
 			Particle particle;
 
 			particle.pos = pos;
@@ -286,37 +315,31 @@ void ofApp::generateParticles(int s_width, int s_height) {
 			particles.push_back(particle);
 		}
 	}
-	ofLogNotice() << "Particles generated: " << particles.size();
+	// ofLogNotice() << "Particles generated: " << particles.size();
 }
 
 void ofApp::drawParticles() {
-	size_t numParticles = particles.size();
 	const ofPixels &vpix = colorImg.getPixels();
+	int imgW = vpix.getWidth();
+	int imgH = vpix.getHeight();
+	float xmult = WIN_W / (float)imgW;
+	float ymult = WIN_H / (float)imgH;
 
-	for (size_t i = 0; i < numParticles; i++) {
-		auto &particle = particles[i];
-		int samplex = particle.pos.x;
-		if (bMirror)
-			samplex = colorImg.getWidth() - samplex;
+	ofMesh mesh;
+	mesh.setMode(OF_PRIMITIVE_TRIANGLE_FAN);
 
+	for (const auto &particle : particles) {
+		int samplex = bMirror ? imgW - particle.pos.x : particle.pos.x;
 		int sampley = particle.pos.y;
 
-		if (samplex >= 0 && samplex < (int)vpix.getWidth() && sampley >= 0 && sampley < (int)vpix.getHeight()) {
-			ofFloatColor vcolor = vpix.getColor(samplex, sampley);
-			ofFloatColor color(1, 1, 1, 1);
-			color = vcolor;
-			ofSetColor(color);
-			ofPushMatrix();
+		if (samplex < 0 || samplex >= imgW || sampley < 0 || sampley >= imgH)
+			continue;
 
-			float xmult = WIN_W / colorImg.getWidth();
-			float ymult = WIN_H / colorImg.getHeight();
+		ofFloatColor vcolor = vpix.getColor(samplex, sampley);
+		ofSetColor(vcolor);
 
-			float psize = particle.size * particle_size * (vcolor.getBrightness() * 0.8f + 0.2f);
-
-			ofTranslate(particle.pos.x * xmult, particle.pos.y * ymult);
-			ofDrawCircle(0, 0, psize);
-			ofPopMatrix();
-		}
+		float psize = particle.size * particle_size * (vcolor.getBrightness() * 0.8f + 0.2f);
+		ofDrawCircle(particle.pos.x * xmult, particle.pos.y * ymult, psize);
 	}
 }
 
@@ -352,17 +375,18 @@ void ofApp::AllocateImages() {
 
 
 void ofApp::processNewFrame() {
-	colorImg.setFromPixels(cam.getPixels());
+	auto pixels = cam.getPixels();
+	colorImg.setFromPixels(pixels);
 	grayImage = colorImg;
-
-	auto cvMat = cv::cvarrToMat(colorImg.getCvImage());
-	results = classify.classifyFrame(cvMat);
 
 
 	if (bMirror)
 		grayImage.mirror(false, true);
 
 	currentImage.scaleIntoMe(grayImage);
+
+	auto cvMat = cv::cvarrToMat(colorImg.getCvImage());
+	results = classify.classifyFrame(cvMat);
 
 	if (bContrastStretch)
 		currentImage.contrastStretch();
@@ -517,13 +541,11 @@ void ofApp::loadTextureFromFile(int index) {
 // CALLBACKS
 //-----------------------------------------------------------------------------------------------------------
 void ofApp::keyPressed(int key) {
-	// unsigned idx = key - '0';
-	// if (idx < post.size()) {
-	// 	post[idx]->setEnabled(!post[idx]->getEnabled());
-	// 	return;
-	// }
-
-	static int counter = 0;
+	unsigned idx = key - '0';
+	if (idx < post.size()) {
+		post[idx]->setEnabled(!post[idx]->getEnabled());
+		return;
+	}
 
 	switch (key) {
 		case 'q':
@@ -572,11 +594,8 @@ void ofApp::keyPressed(int key) {
 			break;
 
 		case 'm':
-			counter = counter % maps_count;
-			ofLoadImage(asciiAtlas, fontmaps[counter]);
-			asciiShader.setUniformTexture("asciiAtlas", asciiAtlas, 1);
-			atlasCellSize = asciiAtlas.getWidth() / atlasSize_grid.x;
-			asciiShader.setUniform2f("atlasSize", atlasSize_grid.x, atlasSize_grid.y);
+			counter++;
+			loadTextureFromFile(counter);
 			break;
 	}
 }
@@ -584,8 +603,8 @@ void ofApp::keyPressed(int key) {
 //-----------------------------------------------------------------------------------------------------------
 
 void ofApp::windowResized(int w, int h) {
-	WIN_W = w;
-	WIN_H = h;
+	WIN_W = ofGetWidth();
+	WIN_H = ofGetHeight();
 
 	particlesFbo.allocate(WIN_W, WIN_H, GL_RGBA);
 	post.init(WIN_W, WIN_H);

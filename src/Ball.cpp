@@ -1,7 +1,7 @@
 #include "Ball.hpp"
 #include "ofAppRunner.h"
 
-Ball::Ball() : speed(32), pos(ofGetWidth() / 2.0, ofGetHeight() / 2.0), size(100, 100), dir(1, 1) {
+Ball::Ball() : speed(16), pos(ofGetWidth() / 2.0, ofGetHeight() / 2.0), size(100, 100), dir(1, 1) {
 }
 
 Ball::~Ball() {

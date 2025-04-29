@@ -84,10 +84,9 @@ public:
 	// of strings
 	std::vector<std::string> fontmaps;
 	unsigned int maps_count;
-
+	unsigned int counter;
 
 	yolo5ImageClassify classify;
-
 	vector<yolo5ImageClassify::Result> results;
 
 
@@ -136,6 +135,7 @@ private:
 	void updateParticles();
 	void applyFlowToPlayers();
 
+	void drawDetectedObjects();
 
 	void loadTextureFromFile(int index);
 	void loadMapNames();
