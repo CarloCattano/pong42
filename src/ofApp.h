@@ -10,22 +10,13 @@
 #include "ofxOpenCv.h"
 #include "ofxPostProcessing.h"
 
+#include "Particles.h"
 #include "yolo5ImageClassify.h"
 
 
 #define PARTICLES
 #define UI
 
-class Particle {
-public:
-	glm::vec2 pos = { 0, 0 };
-	glm::vec2 basePos = { 0, 0 };
-	glm::vec2 vel = { 0, 0 };
-
-	float size = 20.0;
-	float timeNotTouched = 0.0f;
-	bool bAtBasePos = false;
-};
 
 class ofApp : public ofBaseApp {
 public:
@@ -48,8 +39,9 @@ public:
 	cv::Mat previousMat;
 	cv::Mat flowMat;
 
-	vector<Particle> particles;
+	ParticleSystem particleSystem;
 
+	ofShader particleShader;
 
 	bool bMirror;
 	bool bContrastStretch;
@@ -89,11 +81,13 @@ public:
 	yolo5ImageClassify classify;
 	vector<yolo5ImageClassify::Result> results;
 
+	int sourceWidth;
+	int sourceHeight;
 
-private:
 	unsigned short int WIN_H;
 	unsigned short int WIN_W;
 
+private:
 	bool bNewFrame;
 
 	bool b_Ascii;
@@ -102,6 +96,12 @@ private:
 	ofColor bgColor;
 
 	float flowSensitivity;
+
+
+	ofxCvGrayscaleImage depthOrig;
+	ofxCvGrayscaleImage depthProcessed;
+	ofxCvContourFinder depthContours;
+	ofxCvColorImage colorImageRGB;
 
 	float s_asciiFontScale;
 	ofVec2f atlasSize_grid;
@@ -140,8 +140,6 @@ private:
 	void loadTextureFromFile(int index);
 	void loadMapNames();
 
-	int sourceWidth;
-	int sourceHeight;
 
 	UIManager uiManager;
 

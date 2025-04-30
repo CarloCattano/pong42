@@ -7,27 +7,10 @@
 #include "ofAppRunner.h"
 #include "ofUtils.h"
 
-ofxCvGrayscaleImage depthOrig;
-ofxCvGrayscaleImage depthProcessed;
-ofxCvContourFinder depthContours;
-ofxCvColorImage colorImageRGB;
-
-void ofApp::loadMapNames() {
-	ofDirectory dir;
-	dir.allowExt("png");
-	dir.listDir("fontmaps");
-	dir.sort();
-	maps_count = dir.size() - 1;
-	fontmaps.resize(maps_count);
-	for (unsigned int i = 0; i < maps_count - 1; i++) {
-		fontmaps[i] = dir.getPath(i);
-	}
-}
-
 void ofApp::setup() {
 	WIN_W = ofGetWidth();
 	WIN_H = ofGetHeight();
-
+	ofSetVerticalSync(false);
 	ofSetWindowShape(WIN_W, WIN_H);
 	ofSetFrameRate(60);
 	ofEnableAlphaBlending();
@@ -101,6 +84,10 @@ void ofApp::setup() {
 	zoomBlur->setDensity(0.1);
 
 	loadMapNames();
+
+
+	particleShader.load("shaders/particles.vert", "shaders/particles.frag");
+
 
 	counter = 0;
 	b_Ascii = true;
@@ -188,7 +175,7 @@ void ofApp::draw() {
 
 	particlesFbo.begin();
 
-	ofBackgroundGradient(ofColor(100), bgColor);
+	ofBackgroundGradient(ofColor(0), bgColor);
 	ofSetColor(255);
 
 	if (grayImage.bAllocated) {
@@ -202,7 +189,7 @@ void ofApp::draw() {
 
 	ofSetColor(255);
 
-	if (b_Ascii) {
+	if (b_Ascii && asciiShader.isLoaded()) {
 		asciiShader.begin();
 		asciiShader.setUniformTexture("tex0", colorImg.getTexture(), 0);
 		asciiShader.setUniformTexture("asciiAtlas", asciiAtlas, 1);
@@ -218,9 +205,8 @@ void ofApp::draw() {
 	particlesFbo.draw(0, 0);
 
 
-	if (b_Ascii)
+	if (b_Ascii && asciiShader.isLoaded())
 		asciiShader.end();
-
 
 	post.end();
 
@@ -265,82 +251,59 @@ void ofApp::drawDetectedObjects() {
 		return;
 	}
 
-	// Set drawing properties
 	ofNoFill();
 	ofSetColor(255, 0, 255, 255);
 
-	// Scale factors based on the current video feed size and window size
 	float scaleX = (float)WIN_W / colorImg.getWidth();	// Use actual video frame width (colorImg.getWidth())
 	float scaleY = (float)WIN_H / colorImg.getHeight(); // Use actual video frame height (colorImg.getHeight())
 
-	// Draw each detected object as a scaled rectangle
 	for (auto res : results) {
 		auto rect = res.rect;
 
-		// Scale the rect based on the current video feed resolution
 		ofRectangle scaledRect(rect.x * scaleX, rect.y * scaleY, rect.width * scaleX, rect.height * scaleY);
 
-		// Draw the scaled rectangle
 		ofDrawRectangle(scaledRect);
 
-		// Draw label at the scaled position
 		ofDrawBitmapStringHighlight(res.label, scaledRect.getTopLeft());
 	}
 
-	// Re-enable filling
 	ofFill();
 }
 
 //-----------------------------------------------------------------------------------------------------------
 
+
 void ofApp::generateParticles(int s_width, int s_height) {
-	particles.clear();
+	float effectiveSpacing = spacing;
 
-	int numx = s_width / spacing;
-	int numy = s_height / spacing;
-
-	float delta = 1.0f;
-
-	float offset = spacing * delta;
-
-	for (int x = 0; x < numx; x++) {
-		for (int y = 0; y < numy; y++) {
-			// glm::vec2 pos(spacing * delta + (float)x * spacing, spacing * delta + (float)y * spacing);
-			glm::vec2 pos(offset + x * spacing, offset + y * spacing);
-			Particle particle;
-
-			particle.pos = pos;
-			particle.size = spacing;
-			particle.basePos = particle.pos;
-			particles.push_back(particle);
-		}
+	// For debugging, ensure spacing is reasonable
+	if (effectiveSpacing <= 0 || effectiveSpacing > 100) {
+		effectiveSpacing = 20; // Default safe value
 	}
-	// ofLogNotice() << "Particles generated: " << particles.size();
+
+	// Generate particles with the simple system
+	particleSystem.generateParticles(s_width, s_height, effectiveSpacing);
+}
+
+void ofApp::updateParticles() {
+	float deltaTime = ofClamp(ofGetLastFrameTime(), 1.f / 5000.f, 1.f / 5.f);
+
+	particleSystem.updateParticles(flowMat, deltaTime, minLengthSquared, sourceWidth, sourceHeight, bMirror);
+
+	leftFlowVector = particleSystem.getLeftFlowVector();
+	rightFlowVector = particleSystem.getRightFlowVector();
 }
 
 void ofApp::drawParticles() {
 	const ofPixels &vpix = colorImg.getPixels();
+
 	int imgW = vpix.getWidth();
 	int imgH = vpix.getHeight();
 	float xmult = WIN_W / (float)imgW;
 	float ymult = WIN_H / (float)imgH;
 
-	ofMesh mesh;
-	mesh.setMode(OF_PRIMITIVE_TRIANGLE_FAN);
-
-	for (const auto &particle : particles) {
-		int samplex = bMirror ? imgW - particle.pos.x : particle.pos.x;
-		int sampley = particle.pos.y;
-
-		if (samplex < 0 || samplex >= imgW || sampley < 0 || sampley >= imgH)
-			continue;
-
-		ofFloatColor vcolor = vpix.getColor(samplex, sampley);
-		ofSetColor(vcolor);
-
-		float psize = particle.size * particle_size * (vcolor.getBrightness() * 0.8f + 0.2f);
-		ofDrawCircle(particle.pos.x * xmult, particle.pos.y * ymult, psize);
-	}
+	particleSystem.updateColors(vpix, particle_size, bMirror);
+	particleSystem.draw(xmult, ymult);
 }
 
 //-------------------------------------------------------------------------------------
@@ -379,14 +342,17 @@ void ofApp::processNewFrame() {
 	colorImg.setFromPixels(pixels);
 	grayImage = colorImg;
 
-
 	if (bMirror)
 		grayImage.mirror(false, true);
 
 	currentImage.scaleIntoMe(grayImage);
 
-	auto cvMat = cv::cvarrToMat(colorImg.getCvImage());
-	results = classify.classifyFrame(cvMat);
+	static int classifyCounter = 0;
+	classifyCounter++;
+	if (classifyCounter % 4 == 0) { // Only classify every 10th frame
+		auto cvMat = cv::cvarrToMat(colorImg.getCvImage());
+		results = classify.classifyFrame(cvMat);
+	}
 
 	if (bContrastStretch)
 		currentImage.contrastStretch();
@@ -395,64 +361,12 @@ void ofApp::processNewFrame() {
 		currentImage.blurGaussian(blurAmount);
 }
 
-
 void ofApp::calculateOpticalFlow() {
 	cv::Mat currentMat = currentImage.getCvMat();
 	cv::calcOpticalFlowFarneback(previousMat, currentMat, flowMat, 0.5, 4, 4, 2, 4, 1.2,
 								 cv::OPTFLOW_FARNEBACK_GAUSSIAN);
 
 	currentMat.copyTo(previousMat);
-}
-
-
-void ofApp::updateParticles() {
-	float deltaTime = ofClamp(ofGetLastFrameTime(), 1.f / 5000.f, 1.f / 5.f);
-	glm::vec2 leftFlowVector(0, 0);
-	glm::vec2 rightFlowVector(0, 0);
-	size_t numParticles = particles.size();
-
-	for (auto &particle : particles) {
-		float percentX = particle.pos.x / sourceWidth;
-		float percentY = particle.pos.y / sourceHeight;
-		glm::vec2 flowForce = getOpticalFlowValueForPercent(percentX, percentY);
-
-		if (particle.pos.x + particle.size < sourceWidth / 2.0)
-			leftFlowVector += flowForce;
-		else
-			rightFlowVector += flowForce;
-
-		float len2 = glm::length2(flowForce);
-		particle.vel /= 1.f + deltaTime;
-		if (len2 > minLengthSquared) {
-			particle.vel += flowForce * (30.0f * deltaTime);
-			if (particle.bAtBasePos)
-				particle.timeNotTouched = 0.0f;
-			particle.bAtBasePos = false;
-		} else {
-			particle.timeNotTouched += deltaTime;
-		}
-
-		if (particle.timeNotTouched > 0.1) {
-			particle.timeNotTouched = 0.0;
-		}
-
-		glm::vec2 basePos = particle.basePos;
-		glm::vec2 diff = basePos - particle.pos;
-		float dist = glm::length(diff);
-		if (dist > 0.1f) {
-			glm::vec2 dir = glm::normalize(diff);
-			particle.vel += dir * (dist * 0.5f * deltaTime);
-		}
-
-		particle.vel *= 0.99f;
-		particle.pos += particle.vel * (10.0f * deltaTime);
-	}
-
-	leftFlowVector /= numParticles / 2;
-	rightFlowVector /= numParticles / 2;
-
-	this->leftFlowVector = leftFlowVector;
-	this->rightFlowVector = rightFlowVector;
 }
 
 
@@ -606,8 +520,10 @@ void ofApp::windowResized(int w, int h) {
 	WIN_W = ofGetWidth();
 	WIN_H = ofGetHeight();
 
-	particlesFbo.allocate(WIN_W, WIN_H, GL_RGBA);
-	post.init(WIN_W, WIN_H);
+	if (particlesFbo.getWidth() != WIN_W || particlesFbo.getHeight() != WIN_H) {
+		particlesFbo.allocate(WIN_W, WIN_H, GL_RGBA);
+		post.init(WIN_W, WIN_H);
+	}
 
 	ofSetWindowShape(WIN_W, WIN_H);
 }
@@ -639,4 +555,17 @@ void ofApp::asciiOffsetChanged(int &offset) {
 
 void ofApp::asciiMixChanged(float &mix) {
 	s_asciiMix = mix;
+}
+
+
+void ofApp::loadMapNames() {
+	ofDirectory dir;
+	dir.allowExt("png");
+	dir.listDir("fontmaps");
+	dir.sort();
+	maps_count = dir.size() - 1;
+	fontmaps.resize(maps_count);
+	for (unsigned int i = 0; i < maps_count - 1; i++) {
+		fontmaps[i] = dir.getPath(i);
+	}
 }
