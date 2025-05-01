@@ -10,13 +10,11 @@
 #include "ofxOpenCv.h"
 #include "ofxPostProcessing.h"
 
+#include "GameManager.h"
 #include "Particles.h"
 #include "yolo5ImageClassify.h"
 
-
-#define PARTICLES
 #define UI
-
 
 class ofApp : public ofBaseApp {
 public:
@@ -59,7 +57,6 @@ public:
 
 	Ball ball;
 
-	ofTrueTypeFont scoreBoard;
 	ofxPostProcessing post;
 	ZoomBlurPass *zoomBlur;
 	EdgePass *edgePass;
@@ -72,8 +69,6 @@ public:
 	std::unordered_map<std::string, std::function<void(float)> > sliderHandlers;
 	std::unordered_map<std::string, std::function<void(int)> > togglesHandlers;
 
-	// init empty array to be resized late
-	// of strings
 	std::vector<std::string> fontmaps;
 	unsigned int maps_count;
 	unsigned int counter;
@@ -97,7 +92,6 @@ private:
 
 	float flowSensitivity;
 
-
 	ofxCvGrayscaleImage depthOrig;
 	ofxCvGrayscaleImage depthProcessed;
 	ofxCvContourFinder depthContours;
@@ -113,7 +107,6 @@ private:
 	glm::vec2 rightFlowVector;
 
 	ofTrueTypeFont font;
-	ofTrueTypeFont fpsFont;
 
 	void calculateNeighbors();
 	void generateParticles(int w, int h);
@@ -142,6 +135,8 @@ private:
 
 
 	UIManager uiManager;
+
+	std::optional<GameManager> gameManager;
 
 	float scaleParameter(float param, float scale, float base = 0.0f) {
 		return base + (param / 1000.0f) * scale;

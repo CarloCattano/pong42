@@ -1,5 +1,6 @@
 #pragma once
 
+#include "ofGraphicsConstants.h"
 #include "ofMain.h"
 
 class ParticleSystem {
@@ -8,14 +9,15 @@ public:
 		glm::vec2 pos;
 		glm::vec2 vel;
 		glm::vec2 basePos;
-		float size = 1.0f;
+		float size = 4.0f;
 		bool bAtBasePos = true;
 		float timeNotTouched = 0.0f;
 		ofFloatColor color;
 	};
 
 	ParticleSystem() {
-		// Initialize with default values
+		glEnable(GL_PROGRAM_POINT_SIZE); // Needed for point sizing in shader (if later used)
+		ofEnablePointSprites();			 // Optional: enables use of texture point sprites
 	}
 
 	void clear() {
@@ -29,9 +31,6 @@ public:
 		int numy = height / spacing;
 		float offset = spacing;
 
-		std::cout << "Generating " << numx << "x" << numy << " particles" << std::endl;
-
-		// Reserve memory
 		particles.reserve(numx * numy);
 
 		for (int x = 0; x < numx; x++) {
@@ -47,8 +46,6 @@ public:
 				particles.push_back(particle);
 			}
 		}
-
-		std::cout << "Generated " << particles.size() << " particles" << std::endl;
 	}
 
 	void updateParticles(const cv::Mat &flowMat, float deltaTime, float minLengthSquared, float sourceWidth,
@@ -125,14 +122,26 @@ public:
 		}
 	}
 
-	void draw(float xmult, float ymult) {
-		// Draw using traditional method first to verify positions
-		ofPushStyle();
+	void draw(float xmult, float ymult, float particle_size) {
+		mesh.clear();
+		mesh.setMode(OF_PRIMITIVE_PATCHES);
+
 		for (const auto &particle : particles) {
-			ofSetColor(particle.color);
-			float displaySize = particle.size * particle.size; // Use original size calculation
-			ofDrawCircle(particle.pos.x * xmult, particle.pos.y * ymult, displaySize);
+			if (particle.color.a > 0.0f && particle.size > 0.0f) {
+				glm::vec3 pos3D(particle.pos.x * xmult, particle.pos.y * ymult, 0.0f);
+				mesh.addVertex(pos3D);
+				mesh.addColor(particle.color);
+			}
 		}
+
+		ofPushStyle();
+		glPointSize(particle_size); // Fixed size for now (can be dynamic with shader)
+		ofEnableBlendMode(OF_BLENDMODE_ADD);
+
+		mesh.draw();
+
+		ofDisableBlendMode();
+		ofDisablePointSprites();
 		ofPopStyle();
 	}
 
@@ -152,6 +161,9 @@ private:
 	std::vector<Particle> particles;
 	glm::vec2 leftFlowVector;
 	glm::vec2 rightFlowVector;
+
+	ofVboMesh mesh;
+	ofShader shader;
 
 	glm::vec2 getOpticalFlowValueForPercent(const cv::Mat &flowMat, float xpct, float ypct, float minLengthSquared) {
 		glm::vec2 flowVector(0, 0);

@@ -1,16 +1,14 @@
-
 #version 150
 
-in vec4 vertexColor;
+in vec4 vColor;
 out vec4 outputColor;
 
 void main() {
+    // Optional: make circular points
+    float dist = length(gl_PointCoord - vec2(0.5));
+    if (dist > 0.5) discard;
 
-    vec2 circCoord = 2.0 * gl_PointCoord - 1.0;
-    float dist = dot(circCoord, circCoord);
-    if (dist > 1.0) {
-        discard;
-    }
-    float alpha = 1.0 - smoothstep(0.7, 1.0, dist);
-    outputColor = vec4(vertexColor.rgb, vertexColor.a * alpha);
+    outputColor = vColor;
 }
+
+

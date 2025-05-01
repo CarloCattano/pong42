@@ -53,9 +53,9 @@ public:
 	const float INPUT_HEIGHT = 640.0;
 
 	// higer means less results but more accurate
-	const float SCORE_THRESHOLD = 0.3;
-	const float NMS_THRESHOLD = 0.4;
-	const float CONFIDENCE_THRESHOLD = 0.4;
+	const float SCORE_THRESHOLD = 0.2;
+	const float NMS_THRESHOLD = 0.3;
+	const float CONFIDENCE_THRESHOLD = 0.2;
 
 	// enabling CUDA might need a different OpenCV lib built with CUDA support
 	//------------------------------------------------------------------------------------------------------------------------------------

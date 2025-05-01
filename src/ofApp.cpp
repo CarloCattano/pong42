@@ -1,7 +1,9 @@
 #include "ofApp.h"
 #include <functional>
+#include <optional>
 #include <unordered_map>
 #include "EdgePass.h"
+#include "GameManager.h"
 #include "Player.hpp"
 #include "fwd.hpp"
 #include "ofAppRunner.h"
@@ -10,40 +12,40 @@
 void ofApp::setup() {
 	WIN_W = ofGetWidth();
 	WIN_H = ofGetHeight();
+
 	ofSetVerticalSync(false);
 	ofSetWindowShape(WIN_W, WIN_H);
-	ofSetFrameRate(60);
+	ofSetFrameRate(120);
 	ofEnableAlphaBlending();
 	ofSetWindowTitle("OpticalFlowYo!");
 	ofBackground(bgColor);
 
 	bgColor = ofColor(0, 0, 0, 255);
 
-	particle_size = 2.0f;
-	spacing = 20;
-	flowSensitivity = 0.1f;
+	particle_size = 8.0f;
+	spacing = 4.0f;
+	flowSensitivity = 0.32f;
 	blurAmount = 1;
-	bMirror = false;
+	bMirror = true;
 	cvDownScale = 16;
 	bContrastStretch = true;
 
 	// store a minimum squared value to apply flow velocity
-	minLengthSquared = 0.5 * 0.5; // 0.5 pixel squared
+	minLengthSquared = 0.7 * 0.7; // 0.5 pixel squared
 
 	ofVec2f paddleSize(64, 256);
 	float centeredY = (WIN_H - paddleSize.y) / 2.0;
 
 	player1 = Player(ofVec2f(64, centeredY), paddleSize);
 	player2 = Player(ofVec2f(WIN_W - 64, centeredY), paddleSize);
+	gameManager.emplace(player1, player2); // constructs in-place
 
 	ofTrueTypeFont::setGlobalDpi(72); // Default is 96, but results in larger than normal pt size.
-	scoreBoard.load(ofToDataPath("verdana.ttf"), 42, true, true);
-	scoreBoard.setLineHeight(28.0);
-	scoreBoard.setLetterSpacing(1.05);
 
-	fpsFont.load(ofToDataPath("verdana.ttf"), 22, true, true);
+	font.load("verdana.ttf", 22, true, true);
+	font.setLineHeight(28.0);
+	font.setLetterSpacing(1.05);
 
-	cam.setVerbose(false);
 	cam.setDesiredFrameRate(60);
 	cam.setup(1280, 720);
 
@@ -85,10 +87,6 @@ void ofApp::setup() {
 
 	loadMapNames();
 
-
-	particleShader.load("shaders/particles.vert", "shaders/particles.frag");
-
-
 	counter = 0;
 	b_Ascii = true;
 	asciiShader.load("shaders/ascii.vert", "shaders/ascii.frag");
@@ -111,7 +109,7 @@ void ofApp::setup() {
 			  spacing = ofClamp(spacing, 10.0f, 128.0f);
 			  generateParticles(WIN_W, WIN_H);
 		  } },
-		{ "slider_1", [this](float val) { particle_size = scaleParameter(val, 5.0f, 0.1f); } },
+		{ "slider_1", [this](float val) { particle_size = scaleParameter(val, 15.0f, 1.0f); } },
 		{ "slider_2", [this](float val) { zoomBlur->setWeight(scaleParameter(val, 1.5f, 0.5)); } },
 		{ "slider_3", [this](float val) { zoomBlur->setDecay(scaleParameter(val, 0.9f)); } },
 		{ "slider_4", [this](float val) { zoomBlur->setExposure(scaleParameter(val, 1.0f)); } },
@@ -125,7 +123,7 @@ void ofApp::setup() {
 	togglesHandlers = {
 		{ "toggle_0", [this](int val) { val == 1 ? b_Ascii = true : b_Ascii = false; } },
 		{ "toggle_1", [this](int val) { zoomBlur->setEnabled(val); } },
-		{ "toggle_2", [this](int val) { edgePass->setEnabled(val); } },
+		// { "toggle_2", [this](int val) { edgePass->setEnabled(val); } },
 		{ "toggle_3", [this](int val) { post[0]->setEnabled(val); } },
 	};
 
@@ -146,8 +144,17 @@ void ofApp::update() {
 	updateParticles();
 	applyFlowToPlayers();
 
+	if (gameManager) {
+		gameManager->update();
+	}
+
 	player1.update();
 	player2.update();
+
+
+	// vertical line in the middle of the screen
+	ofSetColor(255, 0, 0);
+	ofDrawLine(WIN_W / 2.0, 0, WIN_W / 2.0, WIN_H);
 
 	collision();
 
@@ -167,12 +174,10 @@ void ofApp::update() {
 	}
 }
 
-
 //-----------------------------------------------------------------------------------------------------------
-void ofApp::draw() {
-	//-----------------------------------------------------------------------------------------------------------
-	post.begin();
 
+void ofApp::draw() {
+	post.begin();
 	particlesFbo.begin();
 
 	ofBackgroundGradient(ofColor(0), bgColor);
@@ -201,32 +206,28 @@ void ofApp::draw() {
 		asciiShader.setUniform1f("shader_mix", s_asciiMix);
 	}
 
-	ball.draw();
 	particlesFbo.draw(0, 0);
-
 
 	if (b_Ascii && asciiShader.isLoaded())
 		asciiShader.end();
 
+
+	drawDetectedObjects();
+
 	post.end();
 
 	//-----------------------------------------------------------------------------------------------------------
-
 	player1.draw();
 	player2.draw();
 
-	ball.move(player1, player2);
+	if (!gameManager->isGameEnded()) {
+		ball.draw();
+		ball.move(player1, player2);
+	}
 
-	ball.draw();
-
-	ofSetColor(255, 255, 255);
-	scoreBoard.drawString("SCORE : " + ofToString(player1.score) + " | " + ofToString(player2.score), WIN_W / 3.0, 40);
-
-	ofSetColor(25, 200, 111);
-	fpsFont.drawString(ofToString((int)ofGetFrameRate()) + " FPS", WIN_W / 1.2, 30);
-
-	ofSetColor(bgColor);
-
+	if (gameManager) {
+		gameManager->draw();
+	}
 
 	float centOffX = (ball.pos.x / WIN_W);
 	float centOffY = 1 - (ball.pos.y / WIN_H);
@@ -234,19 +235,12 @@ void ofApp::draw() {
 	zoomBlur->setCenterX(ofLerp(zoomBlur->getCenterX(), centOffX, 0.5));
 	zoomBlur->setCenterY(ofLerp(zoomBlur->getCenterY(), centOffY, 0.5));
 
-	// delta with time to smooth travel all hue range
-	float delta = ofMap(ofGetElapsedTimef(), 0, 1, 0, 1);
-
-	edgePass->setHue(ofLerp(edgePass->getSaturation(), 0.0f, delta));
 #ifdef UI
 	uiManager.draw();
 #endif
 }
 
 void ofApp::drawDetectedObjects() {
-	if (!bNewFrame) {
-		return;
-	}
 	if (!colorImg.bAllocated) {
 		return;
 	}
@@ -254,19 +248,38 @@ void ofApp::drawDetectedObjects() {
 	ofNoFill();
 	ofSetColor(255, 0, 255, 255);
 
-	float scaleX = (float)WIN_W / colorImg.getWidth();	// Use actual video frame width (colorImg.getWidth())
-	float scaleY = (float)WIN_H / colorImg.getHeight(); // Use actual video frame height (colorImg.getHeight())
+	float scaleX = (float)WIN_W / colorImg.getWidth();
+	float scaleY = (float)WIN_H / colorImg.getHeight();
+
 
 	for (auto res : results) {
 		auto rect = res.rect;
 
+		if (res.label.empty())
+			continue;
+
+		// flip x
+		if (bMirror) {
+			rect.x = colorImg.getWidth() - rect.x - rect.width;
+		}
+
 		ofRectangle scaledRect(rect.x * scaleX, rect.y * scaleY, rect.width * scaleX, rect.height * scaleY);
+		// ofDrawRectangle(scaledRect);
 
-		ofDrawRectangle(scaledRect);
+		for (int i = 0; i < 4; i++) {
+			if (ofRandom(0, 1) > 0.5) {
+				ofDrawRectangle(scaledRect.x + i * 2, scaledRect.y + i * 2, scaledRect.width - i * ofRandom(2.0f, 6.0f),
+								scaledRect.height - i * ofRandom(2.0f, 6.0f));
+			}
+		}
 
-		ofDrawBitmapStringHighlight(res.label, scaledRect.getTopLeft());
+		int yOffset = 0;
+
+		glm::vec3 labely = scaledRect.getTopLeft() + glm::vec3(0, yOffset, 0);
+
+		ofSetColor(0, 255, 25, 255);
+		font.drawString(res.label, labely.x, labely.y);
 	}
-
 	ofFill();
 }
 
@@ -276,18 +289,14 @@ void ofApp::drawDetectedObjects() {
 void ofApp::generateParticles(int s_width, int s_height) {
 	float effectiveSpacing = spacing;
 
-	// For debugging, ensure spacing is reasonable
 	if (effectiveSpacing <= 0 || effectiveSpacing > 100) {
-		effectiveSpacing = 20; // Default safe value
+		effectiveSpacing = 20;
 	}
-
-	// Generate particles with the simple system
 	particleSystem.generateParticles(s_width, s_height, effectiveSpacing);
 }
 
 void ofApp::updateParticles() {
-	float deltaTime = ofClamp(ofGetLastFrameTime(), 1.f / 5000.f, 1.f / 5.f);
-
+	float deltaTime = ofClamp(ofGetLastFrameTime(), 1.f / 120.f, 1.f / 10.f); // reasonable clamp
 	particleSystem.updateParticles(flowMat, deltaTime, minLengthSquared, sourceWidth, sourceHeight, bMirror);
 
 	leftFlowVector = particleSystem.getLeftFlowVector();
@@ -303,7 +312,7 @@ void ofApp::drawParticles() {
 	float ymult = WIN_H / (float)imgH;
 
 	particleSystem.updateColors(vpix, particle_size, bMirror);
-	particleSystem.draw(xmult, ymult);
+	particleSystem.draw(xmult, ymult, particle_size);
 }
 
 //-------------------------------------------------------------------------------------
@@ -311,11 +320,9 @@ void ofApp::drawParticles() {
 void ofApp::updateCamera() {
 	cam.update();
 	bNewFrame = cam.isFrameNew();
-
 	colorImageRGB = cam.getPixels();
 	depthOrig = colorImageRGB;
 }
-
 
 void ofApp::AllocateImages() {
 	int scaledWidth = sourceWidth / cvDownScale;
@@ -324,7 +331,7 @@ void ofApp::AllocateImages() {
 	if (currentImage.getWidth() != scaledWidth || currentImage.getHeight() != scaledHeight) {
 		previousMat = cv::Mat(scaledHeight, scaledWidth, CV_8UC1);
 		flowMat = cv::Mat(scaledHeight, scaledWidth, CV_32FC2);
-		currentImage.clear();
+		// currentImage.clear();
 		currentImage.allocate(scaledWidth, scaledHeight);
 		currentImage.set(0);
 		previousMat.release();
@@ -347,10 +354,9 @@ void ofApp::processNewFrame() {
 
 	currentImage.scaleIntoMe(grayImage);
 
-	static int classifyCounter = 0;
-	classifyCounter++;
-	if (classifyCounter % 4 == 0) { // Only classify every 10th frame
-		auto cvMat = cv::cvarrToMat(colorImg.getCvImage());
+	auto cvMat = cv::cvarrToMat(colorImg.getCvImage());
+
+	if (ofGetFrameNum() % 3 == 0) {
 		results = classify.classifyFrame(cvMat);
 	}
 
@@ -536,6 +542,7 @@ void ofApp::spacingChanged(int &spacing) {
 }
 
 void ofApp::particleSizeChanged(float &particle_size) {
+	particle_size = ofLerp(particle_size, particle_size, ofGetLastFrameTime());
 	this->particle_size = particle_size;
 }
 
@@ -556,7 +563,6 @@ void ofApp::asciiOffsetChanged(int &offset) {
 void ofApp::asciiMixChanged(float &mix) {
 	s_asciiMix = mix;
 }
-
 
 void ofApp::loadMapNames() {
 	ofDirectory dir;

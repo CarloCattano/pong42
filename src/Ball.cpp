@@ -1,7 +1,7 @@
 #include "Ball.hpp"
 #include "ofAppRunner.h"
 
-Ball::Ball() : speed(16), pos(ofGetWidth() / 2.0, ofGetHeight() / 2.0), size(100, 100), dir(1, 1) {
+Ball::Ball() : speed(32), pos(ofGetWidth() / 2.0, ofGetHeight() / 2.0), size(100, 100), dir(1, 1) {
 }
 
 Ball::~Ball() {
@@ -25,11 +25,7 @@ void Ball::move(Player &player1, Player &player2) {
 		dir.y *= -1;
 		dir.y += ofRandom(-0.1, 0.1);
 	}
-
-	if (ofGetFrameRate() < 60.0)
-		pos += dir * speed;
-	else if (ofGetFrameRate() >= 60.0)
-		pos += dir * speed * 0.5;
+	pos += dir * speed;
 }
 
 void Ball::draw() {
