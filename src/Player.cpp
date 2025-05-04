@@ -1,16 +1,16 @@
-#include "Player.hpp"
+#include "Player.h"
 #include "ofVec2f.h"
 
 Player::Player(ofVec2f pos, ofVec2f size) {
-	this->pos = pos;
-	this->size = size;
-	this->score = 0;
-	this->speed = 6.0;
+	this->pos       = pos;
+	this->size      = size;
+	this->score     = 0;
+	this->speed     = 10.0;
 	this->direction = ofVec2f(0, 1);
 }
 
 Player::Player() {
-	this->pos = ofVec2f(0, 0);
+	this->pos  = ofVec2f(0, 0);
 	this->size = ofVec2f(0, 0);
 }
 
@@ -25,6 +25,7 @@ void Player::move(ofVec2f dir) {
 	this->pos += dir * speed;
 
 	int boundOffset = size.y / 2.0;
+
 	if (pos.y - boundOffset < 0) {
 		pos.y = boundOffset;
 	} else if (pos.y + boundOffset > ofGetHeight()) {
@@ -33,8 +34,16 @@ void Player::move(ofVec2f dir) {
 	this->direction = dir;
 }
 
+void Player::stop() {
+	this->direction = ofVec2f(0, 0);
+}
+
 ofVec2f Player::getDirection() {
-	return direction;
+	return this->direction;
+}
+
+void Player::setDirection(float newDir) {
+	this->direction = ofVec2f(0, newDir);
 }
 
 void Player::draw() {

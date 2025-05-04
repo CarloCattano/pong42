@@ -85,7 +85,16 @@ void main() {
 	float glyphMask = glyph.r;
 	vec4 asciiColor = vec4(sample.rgb * glyphMask, 1.0);
 
-	gl_FragColor = mix(originalColor, asciiColor, shader_mix);
+	// gl_FragColor = mix(originalColor, asciiColor, shader_mix);
+
+	vec4 mixed = mix(originalColor, asciiColor, shader_mix);
+
+	// multiply again by originalColor to make a bloom accentuation
+
+	mixed.rgb *= originalColor.rgb;
+	gl_FragColor = mixed;
+
+
 }
 
 // vim:ft=glsl

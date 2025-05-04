@@ -6,18 +6,18 @@
 class ParticleSystem {
 public:
 	struct Particle {
-		glm::vec2 pos;
-		glm::vec2 vel;
-		glm::vec2 basePos;
-		float size = 4.0f;
-		bool bAtBasePos = true;
-		float timeNotTouched = 0.0f;
+		glm::vec2    pos;
+		glm::vec2    vel;
+		glm::vec2    basePos;
+		float        size           = 4.0f;
+		bool         bAtBasePos     = true;
+		float        timeNotTouched = 0.0f;
 		ofFloatColor color;
 	};
 
 	ParticleSystem() {
-		glEnable(GL_PROGRAM_POINT_SIZE); // Needed for point sizing in shader (if later used)
-		ofEnablePointSprites();			 // Optional: enables use of texture point sprites
+		glEnable(GL_PROGRAM_POINT_SIZE);
+		ofEnablePointSprites();
 	}
 
 	void clear() {
@@ -27,8 +27,8 @@ public:
 	void generateParticles(int width, int height, float spacing) {
 		clear();
 
-		int numx = width / spacing;
-		int numy = height / spacing;
+		int   numx   = width / spacing;
+		int   numy   = height / spacing;
 		float offset = spacing;
 
 		particles.reserve(numx * numy);
@@ -36,12 +36,12 @@ public:
 		for (int x = 0; x < numx; x++) {
 			for (int y = 0; y < numy; y++) {
 				glm::vec2 pos(offset + x * spacing, offset + y * spacing);
-				Particle particle;
+				Particle  particle;
 
-				particle.pos = pos;
-				particle.size = spacing;
+				particle.pos     = pos;
+				particle.size    = spacing;
 				particle.basePos = pos;
-				particle.color = ofFloatColor(1.0f, 1.0f, 1.0f, 1.0f);
+				particle.color   = ofFloatColor(1.0f, 1.0f, 1.0f, 1.0f);
 
 				particles.push_back(particle);
 			}
@@ -49,15 +49,15 @@ public:
 	}
 
 	void updateParticles(const cv::Mat &flowMat, float deltaTime, float minLengthSquared, float sourceWidth,
-						 float sourceHeight, bool bMirror) {
-		leftFlowVector = glm::vec2(0, 0);
-		rightFlowVector = glm::vec2(0, 0);
-		size_t leftCount = 0;
+	                     float sourceHeight, bool bMirror) {
+		leftFlowVector    = glm::vec2(0, 0);
+		rightFlowVector   = glm::vec2(0, 0);
+		size_t leftCount  = 0;
 		size_t rightCount = 0;
 
 		for (auto &particle : particles) {
-			float percentX = particle.pos.x / sourceWidth;
-			float percentY = particle.pos.y / sourceHeight;
+			float     percentX  = particle.pos.x / sourceWidth;
+			float     percentY  = particle.pos.y / sourceHeight;
 			glm::vec2 flowForce = getOpticalFlowValueForPercent(flowMat, percentX, percentY, minLengthSquared);
 
 			if (particle.pos.x + particle.size < sourceWidth / 2.0) {
@@ -85,8 +85,8 @@ public:
 			}
 
 			glm::vec2 basePos = particle.basePos;
-			glm::vec2 diff = basePos - particle.pos;
-			float dist = glm::length(diff);
+			glm::vec2 diff    = basePos - particle.pos;
+			float     dist    = glm::length(diff);
 
 			if (dist > 0.1f) {
 				glm::vec2 dir = glm::normalize(diff);
@@ -111,13 +111,13 @@ public:
 			int samplex = bMirror ? imgW - (int)particle.pos.x : (int)particle.pos.x;
 			int sampley = (int)particle.pos.y;
 			if (samplex >= 0 && samplex < imgW && sampley >= 0 && sampley < imgH) {
-				particle.color = pixels.getColor(samplex, sampley);
+				particle.color   = pixels.getColor(samplex, sampley);
 				float brightness = particle.color.getBrightness();
-				particle.size = particle_size * (brightness * 0.8f + 0.2f);
+				particle.size    = particle_size * (brightness * 0.8f + 0.2f);
 			} else {
 				// Hide out-of-bounds particles visually
 				particle.color.a = 0.0f;
-				particle.size = 0.0f;
+				particle.size    = 0.0f;
 			}
 		}
 	}
@@ -135,7 +135,7 @@ public:
 		}
 
 		ofPushStyle();
-		glPointSize(particle_size); // Fixed size for now (can be dynamic with shader)
+		glPointSize(particle_size); // TODO: Fixed size for now (can be dynamic with shader)
 		ofEnableBlendMode(OF_BLENDMODE_ADD);
 
 		mesh.draw();
@@ -159,11 +159,11 @@ public:
 
 private:
 	std::vector<Particle> particles;
-	glm::vec2 leftFlowVector;
-	glm::vec2 rightFlowVector;
+	glm::vec2             leftFlowVector;
+	glm::vec2             rightFlowVector;
 
 	ofVboMesh mesh;
-	ofShader shader;
+	ofShader  shader;
 
 	glm::vec2 getOpticalFlowValueForPercent(const cv::Mat &flowMat, float xpct, float ypct, float minLengthSquared) {
 		glm::vec2 flowVector(0, 0);
@@ -179,7 +179,7 @@ private:
 		ty = ofClamp(ty, 0, flowMat.rows - 1);
 
 		const cv::Point2f &fxy = flowMat.at<cv::Point2f>(ty, tx);
-		flowVector = glm::vec2(fxy.x, fxy.y);
+		flowVector             = glm::vec2(fxy.x, fxy.y);
 
 		if (glm::length2(flowVector) > minLengthSquared) {
 			return flowVector;

@@ -1,7 +1,7 @@
 #pragma once
 
-#include "Ball.hpp"
-#include "Player.hpp"
+#include "Ball.h"
+#include "Player.h"
 #include "UIManager.h"
 #include "ofMain.h"
 #include "ofTrueTypeFont.h"
@@ -30,7 +30,7 @@ public:
 
 	ofVideoGrabber cam;
 
-	ofxCvColorImage colorImg;
+	ofxCvColorImage     colorImg;
 	ofxCvGrayscaleImage grayImage;
 	ofxCvGrayscaleImage currentImage;
 
@@ -58,22 +58,22 @@ public:
 	Ball ball;
 
 	ofxPostProcessing post;
-	ZoomBlurPass *zoomBlur;
-	EdgePass *edgePass;
+	ZoomBlurPass     *zoomBlur;
+	EdgePass         *edgePass;
 
-	ofShader asciiShader;
-	ofFbo particlesFbo;
+	ofShader  asciiShader;
+	ofFbo     particlesFbo;
 	ofTexture asciiAtlas;
 
-	ofWebSocket webSocket;
+	ofWebSocket                                                  webSocket;
 	std::unordered_map<std::string, std::function<void(float)> > sliderHandlers;
-	std::unordered_map<std::string, std::function<void(int)> > togglesHandlers;
+	std::unordered_map<std::string, std::function<void(int)> >   togglesHandlers;
 
 	std::vector<std::string> fontmaps;
-	unsigned int maps_count;
-	unsigned int counter;
+	unsigned int             maps_count;
+	unsigned int             counter;
 
-	yolo5ImageClassify classify;
+	yolo5ImageClassify                 classify;
 	vector<yolo5ImageClassify::Result> results;
 
 	int sourceWidth;
@@ -87,21 +87,21 @@ private:
 
 	bool b_Ascii;
 
-	float particle_size;
+	float   particle_size;
 	ofColor bgColor;
 
 	float flowSensitivity;
 
 	ofxCvGrayscaleImage depthOrig;
 	ofxCvGrayscaleImage depthProcessed;
-	ofxCvContourFinder depthContours;
-	ofxCvColorImage colorImageRGB;
+	ofxCvContourFinder  depthContours;
+	ofxCvColorImage     colorImageRGB;
 
-	float s_asciiFontScale;
+	float   s_asciiFontScale;
 	ofVec2f atlasSize_grid;
-	float atlasCellSize;
-	float s_asciiCharsetOffset;
-	float s_asciiMix;
+	float   atlasCellSize;
+	float   s_asciiCharsetOffset;
+	float   s_asciiMix;
 
 	glm::vec2 leftFlowVector;
 	glm::vec2 rightFlowVector;
@@ -141,4 +141,6 @@ private:
 	float scaleParameter(float param, float scale, float base = 0.0f) {
 		return base + (param / 1000.0f) * scale;
 	}
+
+	float randDetectionSpeed;
 };

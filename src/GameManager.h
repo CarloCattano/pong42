@@ -1,5 +1,5 @@
 #pragma once
-#include "Player.hpp"
+#include "Player.h"
 #include "ofMain.h"
 #include "ofTrueTypeFont.h"
 
@@ -10,7 +10,7 @@ public:
 
 	GameManager(Player &player1, Player &player2)
 		: player1(player1), player2(player2), WIN_W(ofGetWidth()), WIN_H(ofGetHeight()) {
-		scoreBoard.load(ofToDataPath("verdana.ttf"), 42, true, true);
+		scoreBoard.load(ofToDataPath("NotoSansNushu-Regular.ttf"), 42, true, true);
 		scoreBoard.setLineHeight(28.0);
 		scoreBoard.setLetterSpacing(1.05);
 		fpsFont.load(ofToDataPath("verdana.ttf"), 22, true, true);

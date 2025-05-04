@@ -4,9 +4,11 @@
 #include <unordered_map>
 #include "EdgePass.h"
 #include "GameManager.h"
-#include "Player.hpp"
+#include "Player.h"
 #include "fwd.hpp"
 #include "ofAppRunner.h"
+#include "ofGraphics.h"
+#include "ofMath.h"
 #include "ofUtils.h"
 
 void ofApp::setup() {
@@ -17,30 +19,31 @@ void ofApp::setup() {
 	ofSetWindowShape(WIN_W, WIN_H);
 	ofSetFrameRate(120);
 	ofEnableAlphaBlending();
-	ofSetWindowTitle("OpticalFlowYo!");
+	ofSetWindowTitle("maiai");
 	ofBackground(bgColor);
 
 	bgColor = ofColor(0, 0, 0, 255);
 
-	particle_size = 8.0f;
-	spacing = 4.0f;
-	flowSensitivity = 0.32f;
-	blurAmount = 1;
-	bMirror = true;
-	cvDownScale = 16;
+	particle_size    = 8.0f;
+	spacing          = 4.0f;
+	flowSensitivity  = 0.40f;
+	blurAmount       = 3;
+	bMirror          = true;
+	cvDownScale      = 16;
 	bContrastStretch = true;
 
 	// store a minimum squared value to apply flow velocity
 	minLengthSquared = 0.7 * 0.7; // 0.5 pixel squared
 
-	ofVec2f paddleSize(64, 256);
-	float centeredY = (WIN_H - paddleSize.y) / 2.0;
+	ofVec2f paddleSize(64, 224);
+	float   centeredY = (WIN_H - paddleSize.y) / 2.0;
 
 	player1 = Player(ofVec2f(64, centeredY), paddleSize);
 	player2 = Player(ofVec2f(WIN_W - 64, centeredY), paddleSize);
+
 	gameManager.emplace(player1, player2); // constructs in-place
 
-	ofTrueTypeFont::setGlobalDpi(72); // Default is 96, but results in larger than normal pt size.
+	ofTrueTypeFont::setGlobalDpi(72);
 
 	font.load("verdana.ttf", 22, true, true);
 	font.setLineHeight(28.0);
@@ -49,7 +52,7 @@ void ofApp::setup() {
 	cam.setDesiredFrameRate(60);
 	cam.setup(1280, 720);
 
-	sourceWidth = cam.getWidth();
+	sourceWidth  = cam.getWidth();
 	sourceHeight = cam.getHeight();
 
 	depthOrig.allocate(sourceWidth, sourceHeight);
@@ -62,6 +65,7 @@ void ofApp::setup() {
 	post.createPass<BloomPass>()->setEnabled(false);
 	post.createPass<ZoomBlurPass>()->setEnabled(false);
 	post.createPass<EdgePass>()->setEnabled(false);
+
 
 	zoomBlur = dynamic_cast<ZoomBlurPass *>(post[1].get());
 	edgePass = dynamic_cast<EdgePass *>(post[2].get());
@@ -93,41 +97,43 @@ void ofApp::setup() {
 	s_asciiFontScale = 2.0f;
 
 	atlasSize_grid = ofVec2f(8.0f, 8.0f);
-	atlasCellSize = 32.0f;
+	atlasCellSize  = 32.0f;
 	asciiAtlas.setTextureMinMagFilter(GL_NEAREST, GL_NEAREST); // Prevents blurring
 	ofLoadImage(asciiAtlas, "fontmaps/edges.png");
 	particlesFbo.allocate(WIN_W, WIN_H, GL_RGBA);
 
-	// WEBSOCKET WIP
+	// WEBSOCKET communication with fastAPI server
 	webSocket.onMessage = [&](const std::string &msg) { ofLogNotice() << "Received: " << msg; };
 	webSocket.connect("ws://ws.42ls.online/of-ws");
 
 	sliderHandlers = {
 		{ "slider_0",
 		  [this](float val) {
-			  spacing = scaleParameter(val, 128.0f, 10.0f);
-			  spacing = ofClamp(spacing, 10.0f, 128.0f);
-			  generateParticles(WIN_W, WIN_H);
+		      spacing = scaleParameter(val, 128.0f, 10.0f);
+		      spacing = ofClamp(spacing, 10.0f, 128.0f);
+		      generateParticles(WIN_W, WIN_H);
 		  } },
 		{ "slider_1", [this](float val) { particle_size = scaleParameter(val, 15.0f, 1.0f); } },
 		{ "slider_2", [this](float val) { zoomBlur->setWeight(scaleParameter(val, 1.5f, 0.5)); } },
 		{ "slider_3", [this](float val) { zoomBlur->setDecay(scaleParameter(val, 0.9f)); } },
 		{ "slider_4", [this](float val) { zoomBlur->setExposure(scaleParameter(val, 1.0f)); } },
 		{ "slider_5", [this](float val) { zoomBlur->setDensity(scaleParameter(val, 0.1f)); } },
-		{ "slider_6", [this](float val) { s_asciiFontScale = scaleParameter(val, 120.0f, 1.0); } },
+		{ "slider_6", [this](float val) { s_asciiFontScale     = scaleParameter(val, 120.0f, 1.0); } },
 		{ "slider_7", [this](float val) { s_asciiCharsetOffset = scaleParameter(val, 64.0); } },
-		{ "slider_8", [this](float val) { s_asciiMix = scaleParameter(val, 1.0f); } },
+		{ "slider_8", [this](float val) { s_asciiMix           = scaleParameter(val, 1.0f); } },
 		{ "slider_9", [this](float val) { loadTextureFromFile(floor((val / 1000.0f) * maps_count)); } },
 	};
 
 	togglesHandlers = {
 		{ "toggle_0", [this](int val) { val == 1 ? b_Ascii = true : b_Ascii = false; } },
 		{ "toggle_1", [this](int val) { zoomBlur->setEnabled(val); } },
-		// { "toggle_2", [this](int val) { edgePass->setEnabled(val); } },
+		{ "toggle_2", [this](int val) { edgePass->setEnabled(val); } },
 		{ "toggle_3", [this](int val) { post[0]->setEnabled(val); } },
 	};
 
 	classify.setup("yolov5n.onnx", "classes.txt", true);
+
+	randDetectionSpeed = ofRandom(0.1f, 32.0f);
 }
 
 //-----------------------------------------------------------------------------------------------------------
@@ -186,7 +192,7 @@ void ofApp::draw() {
 	if (grayImage.bAllocated) {
 		ofSetColor(255, 255, 255, 255);
 		drawParticles();
-		ofSetColor(255, 255, 255, 200);
+		ofSetColor(255, 255, 255, 255);
 		drawDetectedObjects();
 	}
 
@@ -211,7 +217,6 @@ void ofApp::draw() {
 	if (b_Ascii && asciiShader.isLoaded())
 		asciiShader.end();
 
-
 	drawDetectedObjects();
 
 	post.end();
@@ -229,6 +234,18 @@ void ofApp::draw() {
 		gameManager->draw();
 	}
 
+	// MIDDLE LINE
+	ofSetLineWidth(6);
+	ofSetColor(255, 255, 255, 100);
+
+	for (int i = 0; i < WIN_H; i++) {
+		if (i % 80 == 0) {
+			ofDrawLine(WIN_W / 2.0, i, WIN_W / 2.0, i + 40);
+		}
+	}
+
+	ofSetLineWidth(1);
+
 	float centOffX = (ball.pos.x / WIN_W);
 	float centOffY = 1 - (ball.pos.y / WIN_H);
 
@@ -239,6 +256,8 @@ void ofApp::draw() {
 	uiManager.draw();
 #endif
 }
+//---------------------------------------------------------------------------------
+
 
 void ofApp::drawDetectedObjects() {
 	if (!colorImg.bAllocated) {
@@ -258,20 +277,20 @@ void ofApp::drawDetectedObjects() {
 		if (res.label.empty())
 			continue;
 
-		// flip x
 		if (bMirror) {
 			rect.x = colorImg.getWidth() - rect.x - rect.width;
 		}
 
 		ofRectangle scaledRect(rect.x * scaleX, rect.y * scaleY, rect.width * scaleX, rect.height * scaleY);
-		// ofDrawRectangle(scaledRect);
 
 		for (int i = 0; i < 4; i++) {
 			if (ofRandom(0, 1) > 0.5) {
+				ofSetLineWidth(sin(ofGetElapsedTimef() * randDetectionSpeed) * 16 + 1);
 				ofDrawRectangle(scaledRect.x + i * 2, scaledRect.y + i * 2, scaledRect.width - i * ofRandom(2.0f, 6.0f),
-								scaledRect.height - i * ofRandom(2.0f, 6.0f));
+				                scaledRect.height - i * ofRandom(2.0f, 6.0f));
 			}
 		}
+		ofSetLineWidth(1);
 
 		int yOffset = 0;
 
@@ -299,15 +318,15 @@ void ofApp::updateParticles() {
 	float deltaTime = ofClamp(ofGetLastFrameTime(), 1.f / 120.f, 1.f / 10.f); // reasonable clamp
 	particleSystem.updateParticles(flowMat, deltaTime, minLengthSquared, sourceWidth, sourceHeight, bMirror);
 
-	leftFlowVector = particleSystem.getLeftFlowVector();
+	leftFlowVector  = particleSystem.getLeftFlowVector();
 	rightFlowVector = particleSystem.getRightFlowVector();
 }
 
 void ofApp::drawParticles() {
 	const ofPixels &vpix = colorImg.getPixels();
 
-	int imgW = vpix.getWidth();
-	int imgH = vpix.getHeight();
+	int   imgW  = vpix.getWidth();
+	int   imgH  = vpix.getHeight();
 	float xmult = WIN_W / (float)imgW;
 	float ymult = WIN_H / (float)imgH;
 
@@ -319,18 +338,18 @@ void ofApp::drawParticles() {
 
 void ofApp::updateCamera() {
 	cam.update();
-	bNewFrame = cam.isFrameNew();
+	bNewFrame     = cam.isFrameNew();
 	colorImageRGB = cam.getPixels();
-	depthOrig = colorImageRGB;
+	depthOrig     = colorImageRGB;
 }
 
 void ofApp::AllocateImages() {
-	int scaledWidth = sourceWidth / cvDownScale;
+	int scaledWidth  = sourceWidth / cvDownScale;
 	int scaledHeight = sourceHeight / cvDownScale;
 
 	if (currentImage.getWidth() != scaledWidth || currentImage.getHeight() != scaledHeight) {
 		previousMat = cv::Mat(scaledHeight, scaledWidth, CV_8UC1);
-		flowMat = cv::Mat(scaledHeight, scaledWidth, CV_32FC2);
+		flowMat     = cv::Mat(scaledHeight, scaledWidth, CV_32FC2);
 		// currentImage.clear();
 		currentImage.allocate(scaledWidth, scaledHeight);
 		currentImage.set(0);
@@ -370,7 +389,7 @@ void ofApp::processNewFrame() {
 void ofApp::calculateOpticalFlow() {
 	cv::Mat currentMat = currentImage.getCvMat();
 	cv::calcOpticalFlowFarneback(previousMat, currentMat, flowMat, 0.5, 4, 4, 2, 4, 1.2,
-								 cv::OPTFLOW_FARNEBACK_GAUSSIAN);
+	                             cv::OPTFLOW_FARNEBACK_GAUSSIAN);
 
 	currentMat.copyTo(previousMat);
 }
@@ -379,15 +398,40 @@ void ofApp::calculateOpticalFlow() {
 //-----------------------------------------------------------------------------------------------------------
 
 void ofApp::applyFlowToPlayers() {
-	if (leftFlowVector.x > flowSensitivity)
-		player1.move(ofVec2f(0, player1.speed));
-	else if (leftFlowVector.x < -flowSensitivity)
-		player1.move(ofVec2f(0, -player1.speed));
+	static int player1cooldown = 0;
+	static int player2cooldown = 0;
 
-	if (rightFlowVector.x > flowSensitivity)
-		player2.move(ofVec2f(0, -player2.speed));
-	else if (rightFlowVector.x < -flowSensitivity)
-		player2.move(ofVec2f(0, player2.speed));
+	int coolDownTimeOut = 30;
+
+	if (leftFlowVector.y > flowSensitivity) {
+		player1.setDirection(1.0);
+		player1cooldown = 0;
+	} else if (leftFlowVector.y < -flowSensitivity) {
+		player1.setDirection(-1.0);
+		player1cooldown = 0;
+	} else
+		player1cooldown += 1;
+
+
+	if (rightFlowVector.y > flowSensitivity) {
+		player2.setDirection(1.0);
+		player2cooldown = 0;
+	} else if (rightFlowVector.y < -flowSensitivity) {
+		player2.setDirection(-1.0);
+		player2cooldown = 0;
+	} else
+		player2cooldown += 1;
+
+
+	if (player1cooldown > coolDownTimeOut) {
+		player1cooldown = 0;
+		player1.stop();
+	}
+
+	if (player2cooldown > coolDownTimeOut) {
+		player2cooldown = 0;
+		player2.stop();
+	}
 }
 
 
@@ -425,17 +469,17 @@ glm::vec2 ofApp::getOpticalFlowValueForPercent(float xpct, float ypct) {
 
 void ofApp::collision() {
 	if (ball.pos.x - ball.size.x / 2 < player1.pos.x + player1.size.x / 2 &&
-		ball.pos.x + ball.size.x / 2 > player1.pos.x - player1.size.x / 2 &&
-		ball.pos.y - ball.size.y / 2 < player1.pos.y + player1.size.y / 2 &&
-		ball.pos.y + ball.size.y / 2 > player1.pos.y - player1.size.y / 2) {
+	    ball.pos.x + ball.size.x / 2 > player1.pos.x - player1.size.x / 2 &&
+	    ball.pos.y - ball.size.y / 2 < player1.pos.y + player1.size.y / 2 &&
+	    ball.pos.y + ball.size.y / 2 > player1.pos.y - player1.size.y / 2) {
 		ball.dir.x *= -1;
 		ball.speed *= 1.01f;
 	}
 
 	if (ball.pos.x - ball.size.x / 2 < player2.pos.x + player2.size.x / 2 &&
-		ball.pos.x + ball.size.x / 2 > player2.pos.x - player2.size.x / 2 &&
-		ball.pos.y - ball.size.y / 2 < player2.pos.y + player2.size.y / 2 &&
-		ball.pos.y + ball.size.y / 2 > player2.pos.y - player2.size.y / 2) {
+	    ball.pos.x + ball.size.x / 2 > player2.pos.x - player2.size.x / 2 &&
+	    ball.pos.y - ball.size.y / 2 < player2.pos.y + player2.size.y / 2 &&
+	    ball.pos.y + ball.size.y / 2 > player2.pos.y - player2.size.y / 2) {
 		ball.dir.x *= -1;
 		ball.speed *= 1.01f;
 
@@ -536,13 +580,13 @@ void ofApp::windowResized(int w, int h) {
 
 void ofApp::spacingChanged(int &spacing) {
 	this->spacing = spacing;
-	spacing = ofClamp(spacing, 2, 32);
+	spacing       = ofClamp(spacing, 2, 32);
 
 	generateParticles(WIN_W, WIN_H);
 }
 
 void ofApp::particleSizeChanged(float &particle_size) {
-	particle_size = ofLerp(particle_size, particle_size, ofGetLastFrameTime());
+	particle_size       = ofLerp(particle_size, particle_size, ofGetLastFrameTime());
 	this->particle_size = particle_size;
 }
 
