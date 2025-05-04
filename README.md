@@ -1,26 +1,24 @@
 ### TODO's
 
-    - abstract parameters to config file
-    - Implement GUI for debugging on site
+    - Azure kinect testing (ofx Azure Kinect) for skeletal tracking / hand tracking
 
-    Game loop:
-    	- Finish game logic
-    	- restart
+    - audio reactivity
 
     info:
     	- Instructions
     	- QR code credits
 
-    - Ascii effect on shader instead of CPU
+    [x] Post Processing (GPU)
+    [x] Websockets adaptor for openframeworks from scratch using websocketpp
 
-toggle_0 : ascii on/off
-toggle_1 : zoomBlur on/off
-toggle_2 : edgePass on/off
-toggle_3 : glow on/off
+    [x] Implement GUI for debugging on site
 
-slider_0 : particle spacing
-slider_1 : particle size
+    [x] Game loop:
+    	- [x] Finish game logic
+    	- [x] restart
 
-slider_6 : ascii spread
-slider_7 : ascii Offset
-slider_8 : ascii mix
+    [x] Ascii effect on shader instead of CPU
+    [x] Particles on GPU
+
+
+    ~- abstract parameters to config file~
