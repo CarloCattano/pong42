@@ -2,10 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta
-      name="viewport"
-      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
-    />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>OF Control Panel</title>
     <style>
       :root {
@@ -26,12 +23,6 @@
         flex-direction: column;
         align-items: center;
         gap: 1.5rem;
-
-        // Disable selection
-        -webkit-user-select: none; /* Safari */
-        -moz-user-select: none; /* Firefox */
-        -ms-user-select: none; /* Internet Explorer/Edge */
-        user-select: none; /* Non-prefixed version, currently supported by Chrome, Opera, and Edge */
       }
 
       h1 {
@@ -214,6 +205,21 @@
     <div class="grid sliders" id="sliders"></div>
 
     <script>
+      // We need a set of names maped to the control name
+      /*
+        toggle_0 : ascii on/off
+        toggle_1 : zoomBlur on/off
+        toggle_2 : edgePass on/off
+        toggle_3 : glow on/off
+
+        slider_0 : particle spacing
+        slider_1 : particle size
+
+        slider_6 : ascii spread
+        slider_7 : ascii Offset
+        slider_8 : ascii mix
+      */
+
       let toggleNames = ["ascii", "zoomBlur", "edgePass", "glow"];
 
       let sliderNames = [
