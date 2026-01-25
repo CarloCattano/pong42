@@ -5,7 +5,6 @@
 #include "UIManager.h"
 #include "ofMain.h"
 #include "ofTrueTypeFont.h"
-#include "ofWebSocket.h"
 #include "ofxGui.h"
 #include "ofxOpenCv.h"
 #include "ofxPostProcessing.h"
@@ -15,6 +14,7 @@
 #include "yolo5ImageClassify.h"
 
 #define UI
+#define USE_VIDEO_FILE // Define this macro to use a video file instead of the webcam
 
 class ofApp : public ofBaseApp {
 public:
@@ -28,7 +28,11 @@ public:
 
 	void windowResized(int w, int h);
 
+#ifdef USE_VIDEO_FILE
+	ofVideoPlayer videoPlayer;
+#else
 	ofVideoGrabber cam;
+#endif
 
 	ofxCvColorImage     colorImg;
 	ofxCvGrayscaleImage grayImage;
@@ -63,18 +67,14 @@ public:
 
 	ofShader  asciiShader;
 	ofFbo     particlesFbo;
-	ofTexture asciiAtlas;
-
-	ofWebSocket                                                  webSocket;
-	std::unordered_map<std::string, std::function<void(float)> > sliderHandlers;
-	std::unordered_map<std::string, std::function<void(int)> >   togglesHandlers;
+	std::vector<ofTexture> fontTextures;
 
 	std::vector<std::string> fontmaps;
 	unsigned int             maps_count;
 	unsigned int             counter;
 
-	yolo5ImageClassify                 classify;
-	vector<yolo5ImageClassify::Result> results;
+	// yolo5ImageClassify                 classify;
+	// vector<yolo5ImageClassify::Result> results;
 
 	int sourceWidth;
 	int sourceHeight;
@@ -118,7 +118,6 @@ private:
 	void asciiOffsetChanged(int &offset);
 	void asciiMixChanged(float &mix);
 
-	void collision();
 
 	void drawParticles();
 	void updateCamera();

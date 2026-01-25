@@ -1,10 +1,5 @@
 #include "ofApp.h"
-#include <functional>
-#include <optional>
-#include <unordered_map>
 #include "EdgePass.h"
-#include "GameManager.h"
-#include "Player.h"
 #include "fwd.hpp"
 #include "ofAppRunner.h"
 #include "ofGraphics.h"
@@ -36,24 +31,24 @@ void ofApp::setup() {
 	minLengthSquared = 0.7 * 0.7; // 0.5 pixel squared
 
 	ofVec2f paddleSize(64, 224);
-	float   centeredY = (WIN_H - paddleSize.y) / 2.0;
-
-	player1 = Player(ofVec2f(64, centeredY), paddleSize);
-	player2 = Player(ofVec2f(WIN_W - 64, centeredY), paddleSize);
-
-	gameManager.emplace(player1, player2); // constructs in-place
 
 	ofTrueTypeFont::setGlobalDpi(72);
 
 	font.load("verdana.ttf", 22, true, true);
 	font.setLineHeight(28.0);
 	font.setLetterSpacing(1.05);
-
+#ifdef USE_VIDEO_FILE
+	videoPlayer.load("video.mp4");
+	videoPlayer.setLoopState(OF_LOOP_NORMAL);
+	videoPlayer.play();
+	sourceWidth  = videoPlayer.getWidth();
+	sourceHeight = videoPlayer.getHeight();
+#else
 	cam.setDesiredFrameRate(60);
 	cam.setup(1280, 720);
-
 	sourceWidth  = cam.getWidth();
 	sourceHeight = cam.getHeight();
+#endif
 
 	depthOrig.allocate(sourceWidth, sourceHeight);
 	depthProcessed.allocate(sourceWidth, sourceHeight);
@@ -89,7 +84,13 @@ void ofApp::setup() {
 	zoomBlur->setDecay(0.9);
 	zoomBlur->setDensity(0.1);
 
-	loadMapNames();
+	loadMapNames(); // Populate fontmaps
+
+	fontTextures.resize(maps_count);
+	for (unsigned int i = 0; i < maps_count; i++) {
+		ofLoadImage(fontTextures[i], fontmaps[i]);
+		fontTextures[i].setTextureMinMagFilter(GL_NEAREST, GL_NEAREST); // Apply filter here, once per texture
+	}
 
 	counter = 0;
 	b_Ascii = true;
@@ -97,41 +98,20 @@ void ofApp::setup() {
 	s_asciiFontScale = 2.0f;
 
 	atlasSize_grid = ofVec2f(8.0f, 8.0f);
-	atlasCellSize  = 32.0f;
-	asciiAtlas.setTextureMinMagFilter(GL_NEAREST, GL_NEAREST); // Prevents blurring
-	ofLoadImage(asciiAtlas, "fontmaps/edges.png");
+	// Calculate atlasCellSize and set atlasSize uniform once, assuming all font maps have the same width
+	if (maps_count > 0) {
+		atlasCellSize = fontTextures[0].getWidth() / atlasSize_grid.x;
+		asciiShader.begin();
+		asciiShader.setUniform2f("atlasSize", atlasSize_grid.x, atlasSize_grid.y);
+		asciiShader.setUniform1f("cellSize", atlasCellSize);
+		asciiShader.end();
+		// Also call loadTextureFromFile to initialize the shader with the first texture
+		loadTextureFromFile(counter);
+	}
+
 	particlesFbo.allocate(WIN_W, WIN_H, GL_RGBA);
 
-	// WEBSOCKET communication with fastAPI server
-	webSocket.onMessage = [&](const std::string &msg) { ofLogNotice() << "Received: " << msg; };
-	webSocket.connect("ws://ws.42ls.online/of-ws");
-
-	sliderHandlers = {
-		{ "slider_0",
-		  [this](float val) {
-		      spacing = scaleParameter(val, 128.0f, 10.0f);
-		      spacing = ofClamp(spacing, 10.0f, 128.0f);
-		      generateParticles(WIN_W, WIN_H);
-		  } },
-		{ "slider_1", [this](float val) { particle_size = scaleParameter(val, 15.0f, 1.0f); } },
-		{ "slider_2", [this](float val) { zoomBlur->setWeight(scaleParameter(val, 1.5f, 0.5)); } },
-		{ "slider_3", [this](float val) { zoomBlur->setDecay(scaleParameter(val, 0.9f)); } },
-		{ "slider_4", [this](float val) { zoomBlur->setExposure(scaleParameter(val, 1.0f)); } },
-		{ "slider_5", [this](float val) { zoomBlur->setDensity(scaleParameter(val, 0.1f)); } },
-		{ "slider_6", [this](float val) { s_asciiFontScale     = scaleParameter(val, 120.0f, 1.0); } },
-		{ "slider_7", [this](float val) { s_asciiCharsetOffset = scaleParameter(val, 64.0); } },
-		{ "slider_8", [this](float val) { s_asciiMix           = scaleParameter(val, 1.0f); } },
-		{ "slider_9", [this](float val) { loadTextureFromFile(floor((val / 1000.0f) * maps_count)); } },
-	};
-
-	togglesHandlers = {
-		{ "toggle_0", [this](int val) { val == 1 ? b_Ascii = true : b_Ascii = false; } },
-		{ "toggle_1", [this](int val) { zoomBlur->setEnabled(val); } },
-		{ "toggle_2", [this](int val) { edgePass->setEnabled(val); } },
-		{ "toggle_3", [this](int val) { post[0]->setEnabled(val); } },
-	};
-
-	classify.setup("yolov5n.onnx", "classes.txt", true);
+	// classify.setup("yolov5n.onnx", "classes.txt", true);
 
 	randDetectionSpeed = ofRandom(0.1f, 32.0f);
 }
@@ -148,35 +128,9 @@ void ofApp::update() {
 	}
 
 	updateParticles();
-	applyFlowToPlayers();
 
 	if (gameManager) {
 		gameManager->update();
-	}
-
-	player1.update();
-	player2.update();
-
-
-	// vertical line in the middle of the screen
-	ofSetColor(255, 0, 0);
-	ofDrawLine(WIN_W / 2.0, 0, WIN_W / 2.0, WIN_H);
-
-	collision();
-
-	// update params from websocket
-	if (webSocket.isConnected) {
-		ofWebSocket::ParsedData data = webSocket.parsedData;
-
-		auto it = sliderHandlers.find(data.id);
-		if (it != sliderHandlers.end()) {
-			it->second(data.param);
-		}
-
-		auto t_it = togglesHandlers.find(data.id);
-		if (t_it != togglesHandlers.end()) {
-			t_it->second(data.param);
-		}
 	}
 }
 
@@ -203,7 +157,7 @@ void ofApp::draw() {
 	if (b_Ascii && asciiShader.isLoaded()) {
 		asciiShader.begin();
 		asciiShader.setUniformTexture("tex0", colorImg.getTexture(), 0);
-		asciiShader.setUniformTexture("asciiAtlas", asciiAtlas, 1);
+		asciiShader.setUniformTexture("asciiAtlas", fontTextures[counter], 1);
 		asciiShader.setUniform1f("cellSize", atlasCellSize);
 		asciiShader.setUniform2f("atlasSize", atlasSize_grid.x, atlasSize_grid.y);
 		asciiShader.setUniform1f("scaleFont", s_asciiFontScale);
@@ -218,39 +172,9 @@ void ofApp::draw() {
 		asciiShader.end();
 
 	drawDetectedObjects();
-
 	post.end();
 
 	//-----------------------------------------------------------------------------------------------------------
-	player1.draw();
-	player2.draw();
-
-	if (!gameManager->isGameEnded()) {
-		ball.draw();
-		ball.move(player1, player2);
-	}
-
-	if (gameManager) {
-		gameManager->draw();
-	}
-
-	// MIDDLE LINE
-	ofSetLineWidth(6);
-	ofSetColor(255, 255, 255, 100);
-
-	for (int i = 0; i < WIN_H; i++) {
-		if (i % 80 == 0) {
-			ofDrawLine(WIN_W / 2.0, i, WIN_W / 2.0, i + 40);
-		}
-	}
-
-	ofSetLineWidth(1);
-
-	float centOffX = (ball.pos.x / WIN_W);
-	float centOffY = 1 - (ball.pos.y / WIN_H);
-
-	zoomBlur->setCenterX(ofLerp(zoomBlur->getCenterX(), centOffX, 0.5));
-	zoomBlur->setCenterY(ofLerp(zoomBlur->getCenterY(), centOffY, 0.5));
 
 #ifdef UI
 	uiManager.draw();
@@ -260,46 +184,46 @@ void ofApp::draw() {
 
 
 void ofApp::drawDetectedObjects() {
-	if (!colorImg.bAllocated) {
-		return;
-	}
-
-	ofNoFill();
-	ofSetColor(255, 0, 255, 255);
-
-	float scaleX = (float)WIN_W / colorImg.getWidth();
-	float scaleY = (float)WIN_H / colorImg.getHeight();
-
-
-	for (auto res : results) {
-		auto rect = res.rect;
-
-		if (res.label.empty())
-			continue;
-
-		if (bMirror) {
-			rect.x = colorImg.getWidth() - rect.x - rect.width;
-		}
-
-		ofRectangle scaledRect(rect.x * scaleX, rect.y * scaleY, rect.width * scaleX, rect.height * scaleY);
-
-		for (int i = 0; i < 4; i++) {
-			if (ofRandom(0, 1) > 0.5) {
-				ofSetLineWidth(sin(ofGetElapsedTimef() * randDetectionSpeed) * 16 + 1);
-				ofDrawRectangle(scaledRect.x + i * 2, scaledRect.y + i * 2, scaledRect.width - i * ofRandom(2.0f, 6.0f),
-				                scaledRect.height - i * ofRandom(2.0f, 6.0f));
-			}
-		}
-		ofSetLineWidth(1);
-
-		int yOffset = 0;
-
-		glm::vec3 labely = scaledRect.getTopLeft() + glm::vec3(0, yOffset, 0);
-
-		ofSetColor(0, 255, 25, 255);
-		font.drawString(res.label, labely.x, labely.y);
-	}
-	ofFill();
+	// if (!colorImg.bAllocated) {
+	// 	return;
+	// }
+	//
+	// ofNoFill();
+	// ofSetColor(255, 0, 255, 255);
+	//
+	// float scaleX = (float)WIN_W / colorImg.getWidth();
+	// float scaleY = (float)WIN_H / colorImg.getHeight();
+	//
+	//
+	// for (auto res : results) {
+	// 	auto rect = res.rect;
+	//
+	// 	if (res.label.empty())
+	// 		continue;
+	//
+	// 	if (bMirror) {
+	// 		rect.x = colorImg.getWidth() - rect.x - rect.width;
+	// 	}
+	//
+	// 	ofRectangle scaledRect(rect.x * scaleX, rect.y * scaleY, rect.width * scaleX, rect.height * scaleY);
+	//
+	// 	for (int i = 0; i < 4; i++) {
+	// 		if (ofRandom(0, 1) > 0.5) {
+	// 			ofSetLineWidth(sin(ofGetElapsedTimef() * randDetectionSpeed) * 16 + 1);
+	// 			ofDrawRectangle(scaledRect.x + i * 2, scaledRect.y + i * 2, scaledRect.width - i * ofRandom(2.0f, 6.0f),
+	// 			                scaledRect.height - i * ofRandom(2.0f, 6.0f));
+	// 		}
+	// 	}
+	// 	ofSetLineWidth(1);
+	//
+	// 	int yOffset = 0;
+	//
+	// 	glm::vec3 labely = scaledRect.getTopLeft() + glm::vec3(0, yOffset, 0);
+	//
+	// 	ofSetColor(0, 255, 25, 255);
+	// 	font.drawString(res.label, labely.x, labely.y);
+	// }
+	// ofFill();
 }
 
 //-----------------------------------------------------------------------------------------------------------
@@ -337,10 +261,19 @@ void ofApp::drawParticles() {
 //-------------------------------------------------------------------------------------
 
 void ofApp::updateCamera() {
+#ifdef USE_VIDEO_FILE
+	videoPlayer.update();
+	bNewFrame = videoPlayer.isFrameNew();
+	if (bNewFrame) {
+		colorImageRGB = videoPlayer.getPixels();
+		depthOrig     = colorImageRGB;
+	}
+#else
 	cam.update();
 	bNewFrame     = cam.isFrameNew();
 	colorImageRGB = cam.getPixels();
 	depthOrig     = colorImageRGB;
+#endif
 }
 
 void ofApp::AllocateImages() {
@@ -364,7 +297,11 @@ void ofApp::AllocateImages() {
 
 
 void ofApp::processNewFrame() {
+#ifdef USE_VIDEO_FILE
+	auto pixels = videoPlayer.getPixels();
+#else
 	auto pixels = cam.getPixels();
+#endif
 	colorImg.setFromPixels(pixels);
 	grayImage = colorImg;
 
@@ -376,7 +313,7 @@ void ofApp::processNewFrame() {
 	auto cvMat = cv::cvarrToMat(colorImg.getCvImage());
 
 	if (ofGetFrameNum() % 3 == 0) {
-		results = classify.classifyFrame(cvMat);
+		// results = classify.classifyFrame(cvMat);
 	}
 
 	if (bContrastStretch)
@@ -396,44 +333,6 @@ void ofApp::calculateOpticalFlow() {
 
 
 //-----------------------------------------------------------------------------------------------------------
-
-void ofApp::applyFlowToPlayers() {
-	static int player1cooldown = 0;
-	static int player2cooldown = 0;
-
-	int coolDownTimeOut = 30;
-
-	if (leftFlowVector.y > flowSensitivity) {
-		player1.setDirection(1.0);
-		player1cooldown = 0;
-	} else if (leftFlowVector.y < -flowSensitivity) {
-		player1.setDirection(-1.0);
-		player1cooldown = 0;
-	} else
-		player1cooldown += 1;
-
-
-	if (rightFlowVector.y > flowSensitivity) {
-		player2.setDirection(1.0);
-		player2cooldown = 0;
-	} else if (rightFlowVector.y < -flowSensitivity) {
-		player2.setDirection(-1.0);
-		player2cooldown = 0;
-	} else
-		player2cooldown += 1;
-
-
-	if (player1cooldown > coolDownTimeOut) {
-		player1cooldown = 0;
-		player1.stop();
-	}
-
-	if (player2cooldown > coolDownTimeOut) {
-		player2cooldown = 0;
-		player2.stop();
-	}
-}
-
 
 //-----------------------------------------------------------------------------------------------------------
 glm::vec2 ofApp::getOpticalFlowValueForPercent(float xpct, float ypct) {
@@ -467,38 +366,14 @@ glm::vec2 ofApp::getOpticalFlowValueForPercent(float xpct, float ypct) {
 	return glm::vec2(0.0, 0.0);
 }
 
-void ofApp::collision() {
-	if (ball.pos.x - ball.size.x / 2 < player1.pos.x + player1.size.x / 2 &&
-	    ball.pos.x + ball.size.x / 2 > player1.pos.x - player1.size.x / 2 &&
-	    ball.pos.y - ball.size.y / 2 < player1.pos.y + player1.size.y / 2 &&
-	    ball.pos.y + ball.size.y / 2 > player1.pos.y - player1.size.y / 2) {
-		ball.dir.x *= -1;
-		ball.speed *= 1.01f;
-	}
-
-	if (ball.pos.x - ball.size.x / 2 < player2.pos.x + player2.size.x / 2 &&
-	    ball.pos.x + ball.size.x / 2 > player2.pos.x - player2.size.x / 2 &&
-	    ball.pos.y - ball.size.y / 2 < player2.pos.y + player2.size.y / 2 &&
-	    ball.pos.y + ball.size.y / 2 > player2.pos.y - player2.size.y / 2) {
-		ball.dir.x *= -1;
-		ball.speed *= 1.01f;
-
-		if (player2.getDirection().y == ball.dir.y) {
-			ball.speed *= 1.06f;
-		} else if (player2.getDirection().y == -ball.dir.y) {
-			ball.speed *= 0.87f;
-		} else
-			ball.speed *= 1.0f;
-	}
-}
-
 
 void ofApp::loadTextureFromFile(int index) {
+	if (maps_count == 0) {
+		ofLogWarning("ofApp") << "No font maps loaded. Cannot set texture.";
+		return;
+	}
 	index = (int)index % maps_count;
-	ofLoadImage(asciiAtlas, fontmaps[index]);
-	asciiShader.setUniformTexture("asciiAtlas", asciiAtlas, 1);
-	atlasCellSize = asciiAtlas.getWidth() / atlasSize_grid.x;
-	asciiShader.setUniform2f("atlasSize", atlasSize_grid.x, atlasSize_grid.y);
+	asciiShader.setUniformTexture("asciiAtlas", fontTextures[index], 1); // Use pre-loaded texture
 }
 
 
@@ -513,7 +388,6 @@ void ofApp::keyPressed(int key) {
 
 	switch (key) {
 		case 'q':
-			webSocket.close();
 			ofExit();
 			break;
 
@@ -557,9 +431,17 @@ void ofApp::keyPressed(int key) {
 			}
 			break;
 
+		case 'n':
+			if (maps_count > 0) {
+				counter > 0 ? counter-- : counter = maps_count - 1;
+				loadTextureFromFile(counter);
+			}
+			break;
 		case 'm':
-			counter++;
-			loadTextureFromFile(counter);
+			if (maps_count > 0) {
+				counter = (counter + 1) % maps_count; // More robust way to cycle
+				loadTextureFromFile(counter);
+			}
 			break;
 	}
 }
@@ -613,9 +495,9 @@ void ofApp::loadMapNames() {
 	dir.allowExt("png");
 	dir.listDir("fontmaps");
 	dir.sort();
-	maps_count = dir.size() - 1;
+	maps_count = dir.size(); // Correctly get the number of found files
 	fontmaps.resize(maps_count);
-	for (unsigned int i = 0; i < maps_count - 1; i++) {
+	for (unsigned int i = 0; i < maps_count; i++) { // Loop through all found files
 		fontmaps[i] = dir.getPath(i);
 	}
 }
