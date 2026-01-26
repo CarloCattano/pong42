@@ -38,7 +38,7 @@ void ofApp::setup() {
 	font.setLineHeight(28.0);
 	font.setLetterSpacing(1.05);
 #ifdef USE_VIDEO_FILE
-	videoPlayer.load("video.mp4");
+	videoPlayer.load("vid3.mp4");
 	videoPlayer.setLoopState(OF_LOOP_NORMAL);
 	videoPlayer.play();
 	sourceWidth  = videoPlayer.getWidth();

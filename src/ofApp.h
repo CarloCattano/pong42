@@ -3,7 +3,8 @@
 #include "UIManager.h"
 #include "ofTrueTypeFont.h"
 #include "ofxPostProcessing.h"
-
+#include "ofxOpenCv.h"
+#include "ofxGui.h"
 #include "Particles.h"
 
 #define UI

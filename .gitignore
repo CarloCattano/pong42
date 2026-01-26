@@ -19,3 +19,4 @@ Doxyfile
 compile_commands.json
 .vscode/
 .idea/
+*.mp4
