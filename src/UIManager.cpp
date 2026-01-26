@@ -10,6 +10,7 @@ void UIManager::setup() {
 
 	gui.add(asciiOffset_s.setup("asciiOffset", 0, 0, 128));
 	gui.add(asciiMix_s.setup("asciiMix", 0.5f, 0.0f, 1.4f));
+	gui.add(asciiSize_s.setup("asciiSize", 1.0f, 0.1f, 4.0f));
 }
 
 void UIManager::draw() {

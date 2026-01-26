@@ -24,7 +24,7 @@ void ofApp::setup() {
 	flowSensitivity  = 0.40f;
 	blurAmount       = 3;
 	bMirror          = true;
-	cvDownScale      = 16;
+	cvDownScale      = 8;
 	bContrastStretch = true;
 
 	// store a minimum squared value to apply flow velocity
@@ -75,6 +75,7 @@ void ofApp::setup() {
 	uiManager.spread_s.addListener(this, &ofApp::asciiSpreadChanged);
 	uiManager.asciiOffset_s.addListener(this, &ofApp::asciiOffsetChanged);
 	uiManager.asciiMix_s.addListener(this, &ofApp::asciiMixChanged);
+	uiManager.asciiSize_s.addListener(this, &ofApp::asciiSizeChanged);
 
 	uiManager.setup();
 #endif
@@ -96,6 +97,7 @@ void ofApp::setup() {
 	b_Ascii = true;
 	asciiShader.load("shaders/ascii.vert", "shaders/ascii.frag");
 	s_asciiFontScale = 2.0f;
+	s_asciiCellScale = 1.0f;
 
 	atlasSize_grid = ofVec2f(8.0f, 8.0f);
 	// Calculate atlasCellSize and set atlasSize uniform once, assuming all font maps have the same width
@@ -104,6 +106,7 @@ void ofApp::setup() {
 		asciiShader.begin();
 		asciiShader.setUniform2f("atlasSize", atlasSize_grid.x, atlasSize_grid.y);
 		asciiShader.setUniform1f("cellSize", atlasCellSize);
+		asciiShader.setUniform1f("screenCellSize", atlasCellSize * s_asciiCellScale);
 		asciiShader.end();
 		// Also call loadTextureFromFile to initialize the shader with the first texture
 		loadTextureFromFile(counter);
@@ -151,6 +154,7 @@ void ofApp::draw() {
 		asciiShader.setUniformTexture("tex0", colorImg.getTexture(), 0);
 		asciiShader.setUniformTexture("asciiAtlas", fontTextures[counter], 1);
 		asciiShader.setUniform1f("cellSize", atlasCellSize);
+		asciiShader.setUniform1f("screenCellSize", atlasCellSize * s_asciiCellScale);
 		asciiShader.setUniform2f("atlasSize", atlasSize_grid.x, atlasSize_grid.y);
 		asciiShader.setUniform1f("scaleFont", s_asciiFontScale);
 		asciiShader.setUniform1f("charsetOffset", s_asciiCharsetOffset);
@@ -345,20 +349,46 @@ void ofApp::keyPressed(int key) {
 			}
 			break;
 
-		case 'x':
-			b_Ascii = !b_Ascii;
-			if (b_Ascii) {
-				ofLogNotice() << "ASCII SHADER ON";
-				asciiShader.load("shaders/ascii.vert", "shaders/ascii.frag");
-			}
-			break;
+		        case 'x':
+		            b_Ascii = !b_Ascii;
+		            if (b_Ascii) {
+		                ofLogNotice() << "ASCII SHADER ON";
+		                asciiShader.load("shaders/ascii.vert", "shaders/ascii.frag");
+		            }
+		            break;
 
-		case 'n':
-			if (maps_count > 0) {
-				counter > 0 ? counter-- : counter = maps_count - 1;
-				loadTextureFromFile(counter);
-			}
-			break;
+		        case ',':
+		            // decrease ascii on-screen cell scale (makes characters smaller)
+		            s_asciiCellScale -= 0.1f;
+		            if (s_asciiCellScale < 0.1f) {
+		                s_asciiCellScale = 0.1f;
+		            }
+		#ifdef UI
+		            uiManager.asciiSize_s = s_asciiCellScale;
+		#endif
+		            // Ensure texture filtering is updated immediately even if UI is disabled
+		            asciiSizeChanged(s_asciiCellScale);
+		            break;
+ 
+		        case '.':
+		            // increase ascii on-screen cell scale (makes characters larger)
+		            s_asciiCellScale += 0.1f;
+		            if (s_asciiCellScale > 4.0f) {
+		                s_asciiCellScale = 4.0f;
+		            }
+		#ifdef UI
+		            uiManager.asciiSize_s = s_asciiCellScale;
+		#endif
+		            // Ensure texture filtering is updated immediately even if UI is disabled
+		            asciiSizeChanged(s_asciiCellScale);
+		            break;
+
+		        case 'n':
+		            if (maps_count > 0) {
+		                counter > 0 ? counter-- : counter = maps_count - 1;
+		                loadTextureFromFile(counter);
+		            }
+		            break;
 		case 'm':
 			if (maps_count > 0) {
 				counter = (counter + 1) % maps_count; // More robust way to cycle
@@ -409,6 +439,19 @@ void ofApp::asciiOffsetChanged(int &offset) {
 void ofApp::asciiMixChanged(float &mix) {
 	s_asciiMix = mix;
 }
+void ofApp::asciiSizeChanged(float &size) {
+	s_asciiCellScale = size;
+	// Update current atlas texture filtering immediately so changes are visible without cycling textures
+	if (maps_count > 0) {
+		if (s_asciiCellScale < 1.0f) {
+			// When rendering characters smaller than the atlas glyphs, use linear filtering to reduce aliasing
+			fontTextures[counter].setTextureMinMagFilter(GL_LINEAR, GL_LINEAR);
+		} else {
+			// For 1:1 or scaled-up characters, nearest keeps the pixel-art look crisp
+			fontTextures[counter].setTextureMinMagFilter(GL_NEAREST, GL_NEAREST);
+		}
+	}
+}
 
 //-----------------------------------------------------------------------------------------------------------
 
@@ -418,6 +461,14 @@ void ofApp::loadTextureFromFile(int index) {
 		return;
 	}
 	index = (int)index % maps_count;
+	// Choose filtering depending on desired on-screen cell size:
+	// If we're rendering smaller than the atlas glyph, use linear filtering (minification) to reduce aliasing.
+	// Otherwise, keep nearest for a crisper, pixel-art look.
+	if (s_asciiCellScale < 1.0f) {
+		fontTextures[index].setTextureMinMagFilter(GL_LINEAR, GL_LINEAR);
+	} else {
+		fontTextures[index].setTextureMinMagFilter(GL_NEAREST, GL_NEAREST);
+	}
 	asciiShader.setUniformTexture("asciiAtlas", fontTextures[index], 1); // Use pre-loaded texture
 }
 

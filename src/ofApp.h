@@ -85,6 +85,7 @@ private:
 	float   s_asciiFontScale;
 	ofVec2f atlasSize_grid;
 	float   atlasCellSize;
+	float   s_asciiCellScale;
 	float   s_asciiCharsetOffset;
 	float   s_asciiMix;
 
@@ -102,6 +103,7 @@ private:
 	void asciiSpreadChanged(int &spread);
 	void asciiOffsetChanged(int &offset);
 	void asciiMixChanged(float &mix);
+	void asciiSizeChanged(float &size);
 
 	void drawParticles();
 	void updateCamera();
