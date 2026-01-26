@@ -11,3 +11,11 @@ bin/pong42
 obj/
 compile_commands.json
 tags
+html/
+latex/
+Doxyfile
+.cache/
+.clang*
+compile_commands.json
+.vscode/
+.idea/

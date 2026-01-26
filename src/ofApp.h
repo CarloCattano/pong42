@@ -1,17 +1,10 @@
 #pragma once
 
-#include "Ball.h"
-#include "Player.h"
 #include "UIManager.h"
-#include "ofMain.h"
 #include "ofTrueTypeFont.h"
-#include "ofxGui.h"
-#include "ofxOpenCv.h"
 #include "ofxPostProcessing.h"
 
-#include "GameManager.h"
 #include "Particles.h"
-#include "yolo5ImageClassify.h"
 
 #define UI
 #define USE_VIDEO_FILE // Define this macro to use a video file instead of the webcam
@@ -25,7 +18,6 @@ public:
 	glm::vec2 getOpticalFlowValueForPercent(float xpct, float ypct);
 
 	void keyPressed(int key);
-
 	void windowResized(int w, int h);
 
 #ifdef USE_VIDEO_FILE
@@ -56,25 +48,17 @@ public:
 	int blurAmount;
 	int spacing;
 
-	Player player1;
-	Player player2;
-
-	Ball ball;
-
 	ofxPostProcessing post;
 	ZoomBlurPass     *zoomBlur;
 	EdgePass         *edgePass;
 
-	ofShader  asciiShader;
-	ofFbo     particlesFbo;
+	ofShader               asciiShader;
+	ofFbo                  particlesFbo;
 	std::vector<ofTexture> fontTextures;
 
 	std::vector<std::string> fontmaps;
 	unsigned int             maps_count;
 	unsigned int             counter;
-
-	// yolo5ImageClassify                 classify;
-	// vector<yolo5ImageClassify::Result> results;
 
 	int sourceWidth;
 	int sourceHeight;
@@ -118,7 +102,6 @@ private:
 	void asciiOffsetChanged(int &offset);
 	void asciiMixChanged(float &mix);
 
-
 	void drawParticles();
 	void updateCamera();
 	void AllocateImages();
@@ -127,15 +110,10 @@ private:
 	void updateParticles();
 	void applyFlowToPlayers();
 
-	void drawDetectedObjects();
-
 	void loadTextureFromFile(int index);
 	void loadMapNames();
 
-
 	UIManager uiManager;
-
-	std::optional<GameManager> gameManager;
 
 	float scaleParameter(float param, float scale, float base = 0.0f) {
 		return base + (param / 1000.0f) * scale;

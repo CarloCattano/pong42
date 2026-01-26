@@ -2,7 +2,7 @@
 
 #include "ofGraphicsConstants.h"
 #include "ofMain.h"
-
+#include "ofxOpenCv.h"
 class ParticleSystem {
 public:
 	struct Particle {

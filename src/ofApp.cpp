@@ -54,7 +54,7 @@ void ofApp::setup() {
 	depthProcessed.allocate(sourceWidth, sourceHeight);
 	colorImg.allocate(sourceWidth, sourceHeight);
 
-	// Setup post-processing chain
+	// Setup Post-Processing chain ------------------------
 	post.init(WIN_W, WIN_H);
 
 	post.createPass<BloomPass>()->setEnabled(false);
@@ -64,7 +64,7 @@ void ofApp::setup() {
 
 	zoomBlur = dynamic_cast<ZoomBlurPass *>(post[1].get());
 	edgePass = dynamic_cast<EdgePass *>(post[2].get());
-
+	// -----------------------------------------------------
 #ifdef UI
 	uiManager.spacing_s.addListener(this, &ofApp::spacingChanged);
 	uiManager.particle_size_s.addListener(this, &ofApp::particleSizeChanged);
@@ -110,9 +110,6 @@ void ofApp::setup() {
 	}
 
 	particlesFbo.allocate(WIN_W, WIN_H, GL_RGBA);
-
-	// classify.setup("yolov5n.onnx", "classes.txt", true);
-
 	randDetectionSpeed = ofRandom(0.1f, 32.0f);
 }
 
@@ -128,10 +125,6 @@ void ofApp::update() {
 	}
 
 	updateParticles();
-
-	if (gameManager) {
-		gameManager->update();
-	}
 }
 
 //-----------------------------------------------------------------------------------------------------------
@@ -147,7 +140,6 @@ void ofApp::draw() {
 		ofSetColor(255, 255, 255, 255);
 		drawParticles();
 		ofSetColor(255, 255, 255, 255);
-		drawDetectedObjects();
 	}
 
 	particlesFbo.end();
@@ -171,9 +163,7 @@ void ofApp::draw() {
 	if (b_Ascii && asciiShader.isLoaded())
 		asciiShader.end();
 
-	drawDetectedObjects();
 	post.end();
-
 	//-----------------------------------------------------------------------------------------------------------
 
 #ifdef UI
@@ -182,58 +172,11 @@ void ofApp::draw() {
 }
 //---------------------------------------------------------------------------------
 
-
-void ofApp::drawDetectedObjects() {
-	// if (!colorImg.bAllocated) {
-	// 	return;
-	// }
-	//
-	// ofNoFill();
-	// ofSetColor(255, 0, 255, 255);
-	//
-	// float scaleX = (float)WIN_W / colorImg.getWidth();
-	// float scaleY = (float)WIN_H / colorImg.getHeight();
-	//
-	//
-	// for (auto res : results) {
-	// 	auto rect = res.rect;
-	//
-	// 	if (res.label.empty())
-	// 		continue;
-	//
-	// 	if (bMirror) {
-	// 		rect.x = colorImg.getWidth() - rect.x - rect.width;
-	// 	}
-	//
-	// 	ofRectangle scaledRect(rect.x * scaleX, rect.y * scaleY, rect.width * scaleX, rect.height * scaleY);
-	//
-	// 	for (int i = 0; i < 4; i++) {
-	// 		if (ofRandom(0, 1) > 0.5) {
-	// 			ofSetLineWidth(sin(ofGetElapsedTimef() * randDetectionSpeed) * 16 + 1);
-	// 			ofDrawRectangle(scaledRect.x + i * 2, scaledRect.y + i * 2, scaledRect.width - i * ofRandom(2.0f, 6.0f),
-	// 			                scaledRect.height - i * ofRandom(2.0f, 6.0f));
-	// 		}
-	// 	}
-	// 	ofSetLineWidth(1);
-	//
-	// 	int yOffset = 0;
-	//
-	// 	glm::vec3 labely = scaledRect.getTopLeft() + glm::vec3(0, yOffset, 0);
-	//
-	// 	ofSetColor(0, 255, 25, 255);
-	// 	font.drawString(res.label, labely.x, labely.y);
-	// }
-	// ofFill();
-}
-
-//-----------------------------------------------------------------------------------------------------------
-
-
 void ofApp::generateParticles(int s_width, int s_height) {
 	float effectiveSpacing = spacing;
 
 	if (effectiveSpacing <= 0 || effectiveSpacing > 100) {
-		effectiveSpacing = 20;
+		effectiveSpacing = 10; // Default spacing
 	}
 	particleSystem.generateParticles(s_width, s_height, effectiveSpacing);
 }
@@ -257,7 +200,6 @@ void ofApp::drawParticles() {
 	particleSystem.updateColors(vpix, particle_size, bMirror);
 	particleSystem.draw(xmult, ymult, particle_size);
 }
-
 //-------------------------------------------------------------------------------------
 
 void ofApp::updateCamera() {
@@ -310,12 +252,6 @@ void ofApp::processNewFrame() {
 
 	currentImage.scaleIntoMe(grayImage);
 
-	auto cvMat = cv::cvarrToMat(colorImg.getCvImage());
-
-	if (ofGetFrameNum() % 3 == 0) {
-		// results = classify.classifyFrame(cvMat);
-	}
-
 	if (bContrastStretch)
 		currentImage.contrastStretch();
 
@@ -330,9 +266,6 @@ void ofApp::calculateOpticalFlow() {
 
 	currentMat.copyTo(previousMat);
 }
-
-
-//-----------------------------------------------------------------------------------------------------------
 
 //-----------------------------------------------------------------------------------------------------------
 glm::vec2 ofApp::getOpticalFlowValueForPercent(float xpct, float ypct) {
@@ -365,17 +298,6 @@ glm::vec2 ofApp::getOpticalFlowValueForPercent(float xpct, float ypct) {
 	}
 	return glm::vec2(0.0, 0.0);
 }
-
-
-void ofApp::loadTextureFromFile(int index) {
-	if (maps_count == 0) {
-		ofLogWarning("ofApp") << "No font maps loaded. Cannot set texture.";
-		return;
-	}
-	index = (int)index % maps_count;
-	asciiShader.setUniformTexture("asciiAtlas", fontTextures[index], 1); // Use pre-loaded texture
-}
-
 
 // CALLBACKS
 //-----------------------------------------------------------------------------------------------------------
@@ -446,8 +368,6 @@ void ofApp::keyPressed(int key) {
 	}
 }
 
-//-----------------------------------------------------------------------------------------------------------
-
 void ofApp::windowResized(int w, int h) {
 	WIN_W = ofGetWidth();
 	WIN_H = ofGetHeight();
@@ -488,6 +408,17 @@ void ofApp::asciiOffsetChanged(int &offset) {
 
 void ofApp::asciiMixChanged(float &mix) {
 	s_asciiMix = mix;
+}
+
+//-----------------------------------------------------------------------------------------------------------
+
+void ofApp::loadTextureFromFile(int index) {
+	if (maps_count == 0) {
+		ofLogWarning("ofApp") << "No font maps loaded. Cannot set texture.";
+		return;
+	}
+	index = (int)index % maps_count;
+	asciiShader.setUniformTexture("asciiAtlas", fontTextures[index], 1); // Use pre-loaded texture
 }
 
 void ofApp::loadMapNames() {
