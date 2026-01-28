@@ -1,3 +1,3 @@
-ofxPostProcessing
 ofxGui
 ofxOpenCv
+ofxPostProcessing

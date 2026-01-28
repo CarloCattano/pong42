@@ -1,11 +1,12 @@
 #pragma once
 
+#include "Particles.h"
 #include "UIManager.h"
 #include "ofTrueTypeFont.h"
-#include "ofxPostProcessing.h"
-#include "ofxOpenCv.h"
 #include "ofxGui.h"
-#include "Particles.h"
+#include "ofxOpenCv.h"
+#include "ofxPostProcessing.h"
+#include "yolo5ImageClassify.h"
 
 #define UI
 #define USE_VIDEO_FILE // Define this macro to use a video file instead of the webcam
@@ -67,6 +68,9 @@ public:
 	unsigned short int WIN_H;
 	unsigned short int WIN_W;
 
+	yolo5ImageClassify                 classify;
+	vector<yolo5ImageClassify::Result> results;
+
 private:
 	bool bNewFrame;
 
@@ -106,6 +110,7 @@ private:
 	void asciiSizeChanged(float &size);
 
 	void drawParticles();
+	void drawDetectedObjects();
 	void updateCamera();
 	void AllocateImages();
 	void processNewFrame();

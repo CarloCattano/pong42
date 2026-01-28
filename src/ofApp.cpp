@@ -61,6 +61,9 @@ void ofApp::setup() {
 	post.createPass<ZoomBlurPass>()->setEnabled(false);
 	post.createPass<EdgePass>()->setEnabled(false);
 
+    // Initialize YOLOv5 model
+    classify.setup("yolov5n.onnx", "coco.names", true);
+
 
 	zoomBlur = dynamic_cast<ZoomBlurPass *>(post[1].get());
 	edgePass = dynamic_cast<EdgePass *>(post[2].get());
@@ -143,6 +146,7 @@ void ofApp::draw() {
 		ofSetColor(255, 255, 255, 255);
 		drawParticles();
 		ofSetColor(255, 255, 255, 255);
+		drawDetectedObjects();
 	}
 
 	particlesFbo.end();
@@ -167,6 +171,7 @@ void ofApp::draw() {
 	if (b_Ascii && asciiShader.isLoaded())
 		asciiShader.end();
 
+	drawDetectedObjects();
 	post.end();
 	//-----------------------------------------------------------------------------------------------------------
 
@@ -205,6 +210,49 @@ void ofApp::drawParticles() {
 	particleSystem.draw(xmult, ymult, particle_size);
 }
 //-------------------------------------------------------------------------------------
+
+void ofApp::drawDetectedObjects() {
+       if (!colorImg.bAllocated) {
+               return;
+       }
+
+       ofNoFill();
+       ofSetColor(255, 0, 255, 255);
+
+       float scaleX = (float)WIN_W / colorImg.getWidth();
+       float scaleY = (float)WIN_H / colorImg.getHeight();
+
+
+       for (auto res : results) {
+               auto rect = res.rect;
+
+               if (res.label.empty())
+                       continue;
+
+               if (bMirror) {
+                       rect.x = colorImg.getWidth() - rect.x - rect.width;
+               }
+
+               ofRectangle scaledRect(rect.x * scaleX, rect.y * scaleY, rect.width * scaleX, rect.height * scaleY);
+
+               for (int i = 0; i < 4; i++) {
+                       if (ofRandom(0, 1) > 0.5) {
+                               ofSetLineWidth(sin(ofGetElapsedTimef() * randDetectionSpeed) * 16 + 1);
+                               ofDrawRectangle(scaledRect.x + i * 2, scaledRect.y + i * 2, scaledRect.width - i * ofRandom(2.0f, 6.0f),
+                                               scaledRect.height - i * ofRandom(2.0f, 6.0f));
+                       }
+               }
+               ofSetLineWidth(1);
+
+               int yOffset = 0;
+
+               glm::vec3 labely = scaledRect.getTopLeft() + glm::vec3(0, yOffset, 0);
+
+               ofSetColor(0, 255, 25, 255);
+               font.drawString(res.label, labely.x, labely.y);
+       }
+       ofFill();
+}
 
 void ofApp::updateCamera() {
 #ifdef USE_VIDEO_FILE
@@ -255,6 +303,11 @@ void ofApp::processNewFrame() {
 		grayImage.mirror(false, true);
 
 	currentImage.scaleIntoMe(grayImage);
+	auto cvMat = cv::cvarrToMat(colorImg.getCvImage()).clone();
+
+    if (ofGetFrameNum() % 3 == 0) {
+            results = classify.classifyFrame(cvMat);
+    }
 
 	if (bContrastStretch)
 		currentImage.contrastStretch();
@@ -369,7 +422,7 @@ void ofApp::keyPressed(int key) {
 		            // Ensure texture filtering is updated immediately even if UI is disabled
 		            asciiSizeChanged(s_asciiCellScale);
 		            break;
- 
+
 		        case '.':
 		            // increase ascii on-screen cell scale (makes characters larger)
 		            s_asciiCellScale += 0.1f;
