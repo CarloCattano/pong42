@@ -11,6 +11,9 @@ void UIManager::setup() {
 	gui.add(asciiOffset_s.setup("asciiOffset", 0, 0, 128));
 	gui.add(asciiMix_s.setup("asciiMix", 0.5f, 0.0f, 1.4f));
 	gui.add(asciiSize_s.setup("asciiSize", 1.0f, 0.1f, 4.0f));
+	gui.add(asciiDisplacement_s.setup("asciiDisplacement", false));
+	gui.add(asciiParticleThreshold_s.setup("particleThreshold", 0.02f, 0.0f, 1.0f));
+	gui.add(asciiFullRange_s.setup("asciiFullRange", false));
 }
 
 void UIManager::draw() {

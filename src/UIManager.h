@@ -18,4 +18,7 @@ public:
 	ofxIntSlider    asciiOffset_s;
 	ofxFloatSlider  asciiMix_s;
 	ofxFloatSlider  asciiSize_s;
+	ofxToggle       asciiDisplacement_s;
+	ofxFloatSlider  asciiParticleThreshold_s;
+	ofxToggle       asciiFullRange_s;
 };
