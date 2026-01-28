@@ -89,6 +89,13 @@ private:
 	float   s_asciiCharsetOffset;
 	float   s_asciiMix;
 
+	// Particle-based displacement options for ASCII shader
+	// - s_asciiUseParticleDisplacement: 0.0 = off, 1.0 = on
+	// - s_asciiParticleThreshold: brightness threshold to detect particle presence inside a cell
+	float   s_asciiUseParticleDisplacement;
+	float   s_asciiParticleThreshold;
+	bool    s_asciiFullRangeMapping; // if true, map brightness across the full atlas range
+
 	glm::vec2 leftFlowVector;
 	glm::vec2 rightFlowVector;
 
@@ -104,6 +111,11 @@ private:
 	void asciiOffsetChanged(int &offset);
 	void asciiMixChanged(float &mix);
 	void asciiSizeChanged(float &size);
+
+	// Callbacks for particle-displacement UI controls
+	void asciiParticleDisplacementChanged(bool &enabled);
+	void asciiParticleThresholdChanged(float &threshold);
+	void asciiFullRangeChanged(bool &enabled);
 
 	void drawParticles();
 	void updateCamera();

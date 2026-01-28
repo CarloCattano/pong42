@@ -13,6 +13,8 @@ public:
 		bool         bAtBasePos     = true;
 		float        timeNotTouched = 0.0f;
 		ofFloatColor color;
+		float        glyphIndex     = 0.0f; // index into atlas (0..atlasCols*atlasRows - 1)
+		float        rotation       = 0.0f; // radians for glyph orientation (shader reads this from mesh normal.x)
 	};
 
 	ParticleSystem() {
@@ -48,7 +50,7 @@ public:
 		}
 	}
 
-	void updateParticles(const cv::Mat &flowMat, float deltaTime, float minLengthSquared, float sourceWidth,
+	void updateParticles(const cv::Mat &flowMat, float deltaTime,float minLengthSquared, float sourceWidth,
 	                     float sourceHeight, bool bMirror) {
 		leftFlowVector    = glm::vec2(0, 0);
 		rightFlowVector   = glm::vec2(0, 0);
@@ -95,6 +97,10 @@ public:
 
 			particle.vel *= 0.99f;
 			particle.pos += particle.vel * (10.0f * deltaTime);
+			// compute rotation (radians) from velocity so the shader can orient glyphs
+			if (glm::length2(particle.vel) > 1e-6f) {
+				particle.rotation = atan2(particle.vel.y, particle.vel.x);
+			}
 		}
 
 		if (leftCount > 0)
@@ -103,41 +109,71 @@ public:
 			rightFlowVector /= rightCount;
 	}
 
-	void updateColors(const ofPixels &pixels, float particle_size, bool bMirror) {
+	// extended: compute glyphIndex per-particle using brightness.
+	// Parameters:
+	// - scaleFont : a multiplier / spread parameter (defaults to 1.0)
+	// - charsetOffset : offset into the atlas if you want to shift indices
+	// - atlasCols/atlasRows : atlas grid size (defaults to 8x8)
+	void updateColors(const ofPixels &pixels, float particle_size, bool bMirror,
+	                  float scaleFont = 1.0f, float charsetOffset = 0.0f,
+	                  int atlasCols = 8, int atlasRows = 8, bool fullRange = false) {
 		int imgW = pixels.getWidth();
 		int imgH = pixels.getHeight();
+
+		int numGlyphs = atlasCols * atlasRows;
 
 		for (auto &particle : particles) {
 			int samplex = bMirror ? imgW - (int)particle.pos.x : (int)particle.pos.x;
 			int sampley = (int)particle.pos.y;
 			if (samplex >= 0 && samplex < imgW && sampley >= 0 && sampley < imgH) {
-				particle.color   = pixels.getColor(samplex, sampley);
+				particle.color = pixels.getColor(samplex, sampley);
 				float brightness = particle.color.getBrightness();
-				particle.size    = particle_size * (brightness * 0.8f + 0.2f);
+				particle.size = particle_size * (brightness * 0.8f + 0.2f);
+
+				// Choose mapping mode:
+				// - fullRange: map brightness across the whole atlas (0..numGlyphs-1)
+				// - otherwise: use the existing scaleFont + charsetOffset semantics
+				if (fullRange) {
+					float idxf = floor(brightness * static_cast<float>(numGlyphs - 1) + charsetOffset);
+					int idx = static_cast<int>(ofClamp(idxf, 0.0f, static_cast<float>(numGlyphs - 1)));
+					particle.glyphIndex = static_cast<float>(idx);
+				} else {
+					float idxf = floor((brightness * scaleFont) + charsetOffset);
+					int idx = static_cast<int>(ofClamp(idxf, 0.0f, static_cast<float>(numGlyphs - 1)));
+					particle.glyphIndex = static_cast<float>(idx);
+				}
 			} else {
 				// Hide out-of-bounds particles visually
-				particle.color.a = 0.0f;
-				particle.size    = 0.0f;
+				particle.color.a    = 0.0f;
+				particle.size       = 0.0f;
+				particle.glyphIndex = 0.0f;
 			}
 		}
 	}
 
 	void draw(float xmult, float ymult, float particle_size) {
 		mesh.clear();
-		mesh.setMode(OF_PRIMITIVE_PATCHES);
+		// render as points (point sprites); shader can expand these into glyphs using texCoord
+		mesh.setMode(OF_PRIMITIVE_POINTS);
 
 		for (const auto &particle : particles) {
 			if (particle.color.a > 0.0f && particle.size > 0.0f) {
 				glm::vec3 pos3D(particle.pos.x * xmult, particle.pos.y * ymult, 0.0f);
 				mesh.addVertex(pos3D);
 				mesh.addColor(particle.color);
+				// pass glyph index in texcoord.x; texcoord.y carries particle.size (useful for shader)
+				mesh.addTexCoord(glm::vec2(particle.glyphIndex, particle.size));
+				// store rotation in the normal's x component for shader-based rotation
+				mesh.addNormal(glm::vec3(particle.rotation, 0.0f, 0.0f));
 			}
 		}
 
 		ofPushStyle();
-		glPointSize(particle_size); // TODO: Fixed size for now (can be dynamic with shader)
+		// fallback point size (shader can use per-vertex size from texCoord.y if implemented)
+		glPointSize(particle_size);
 		ofEnableBlendMode(OF_BLENDMODE_ADD);
 
+		// a point-sprite shader that samples the ASCII atlas using glyph index will render glyphs
 		mesh.draw();
 
 		ofDisableBlendMode();

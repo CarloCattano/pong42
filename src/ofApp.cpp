@@ -12,7 +12,7 @@ void ofApp::setup() {
 
 	ofSetVerticalSync(false);
 	ofSetWindowShape(WIN_W, WIN_H);
-	ofSetFrameRate(120);
+	ofSetFrameRate(60);
 	ofEnableAlphaBlending();
 	ofSetWindowTitle("maiai");
 	ofBackground(bgColor);
@@ -28,7 +28,7 @@ void ofApp::setup() {
 	bContrastStretch = true;
 
 	// store a minimum squared value to apply flow velocity
-	minLengthSquared = 0.7 * 0.7; // 0.5 pixel squared
+	minLengthSquared = 0.5 * 0.5; // 0.5 pixel squared
 
 	ofVec2f paddleSize(64, 224);
 
@@ -38,7 +38,7 @@ void ofApp::setup() {
 	font.setLineHeight(28.0);
 	font.setLetterSpacing(1.05);
 #ifdef USE_VIDEO_FILE
-	videoPlayer.load("vid3.mp4");
+	videoPlayer.load("vidOr.mp4");
 	videoPlayer.setLoopState(OF_LOOP_NORMAL);
 	videoPlayer.play();
 	sourceWidth  = videoPlayer.getWidth();
@@ -76,6 +76,9 @@ void ofApp::setup() {
 	uiManager.asciiOffset_s.addListener(this, &ofApp::asciiOffsetChanged);
 	uiManager.asciiMix_s.addListener(this, &ofApp::asciiMixChanged);
 	uiManager.asciiSize_s.addListener(this, &ofApp::asciiSizeChanged);
+	uiManager.asciiDisplacement_s.addListener(this, &ofApp::asciiParticleDisplacementChanged);
+	uiManager.asciiParticleThreshold_s.addListener(this, &ofApp::asciiParticleThresholdChanged);
+	uiManager.asciiFullRange_s.addListener(this, &ofApp::asciiFullRangeChanged);
 
 	uiManager.setup();
 #endif
@@ -96,8 +99,13 @@ void ofApp::setup() {
 	counter = 0;
 	b_Ascii = true;
 	asciiShader.load("shaders/ascii.vert", "shaders/ascii.frag");
+	// load particle shader so particles can render glyphs 1:1
+	particleShader.load("shaders/particles.vert", "shaders/particles.frag");
 	s_asciiFontScale = 2.0f;
 	s_asciiCellScale = 1.0f;
+	s_asciiUseParticleDisplacement = 0.0f;
+	s_asciiParticleThreshold = 0.02f;
+	s_asciiFullRangeMapping = false;
 
 	atlasSize_grid = ofVec2f(8.0f, 8.0f);
 	// Calculate atlasCellSize and set atlasSize uniform once, assuming all font maps have the same width
@@ -107,6 +115,9 @@ void ofApp::setup() {
 		asciiShader.setUniform2f("atlasSize", atlasSize_grid.x, atlasSize_grid.y);
 		asciiShader.setUniform1f("cellSize", atlasCellSize);
 		asciiShader.setUniform1f("screenCellSize", atlasCellSize * s_asciiCellScale);
+		asciiShader.setUniform1f("useParticleDisplacement", s_asciiUseParticleDisplacement);
+		asciiShader.setUniform1f("particleThreshold", s_asciiParticleThreshold);
+		asciiShader.setUniform1f("useFullRangeMapping", s_asciiFullRangeMapping ? 1.0f : 0.0f);
 		asciiShader.end();
 		// Also call loadTextureFromFile to initialize the shader with the first texture
 		loadTextureFromFile(counter);
@@ -116,7 +127,7 @@ void ofApp::setup() {
 	randDetectionSpeed = ofRandom(0.1f, 32.0f);
 }
 
-//-----------------------------------------------------------------------------------------------------------
+//-------------------------------------------------------------------------------------------
 void ofApp::update() {
 	updateCamera();
 
@@ -155,6 +166,10 @@ void ofApp::draw() {
 		asciiShader.setUniformTexture("asciiAtlas", fontTextures[counter], 1);
 		asciiShader.setUniform1f("cellSize", atlasCellSize);
 		asciiShader.setUniform1f("screenCellSize", atlasCellSize * s_asciiCellScale);
+		asciiShader.setUniformTexture("particlesTex", particlesFbo.getTexture(), 2);
+		asciiShader.setUniform1f("useParticleDisplacement", s_asciiUseParticleDisplacement);
+		asciiShader.setUniform1f("particleThreshold", s_asciiParticleThreshold);
+		asciiShader.setUniform1f("useFullRangeMapping", s_asciiFullRangeMapping ? 1.0f : 0.0f);
 		asciiShader.setUniform2f("atlasSize", atlasSize_grid.x, atlasSize_grid.y);
 		asciiShader.setUniform1f("scaleFont", s_asciiFontScale);
 		asciiShader.setUniform1f("charsetOffset", s_asciiCharsetOffset);
@@ -168,7 +183,7 @@ void ofApp::draw() {
 		asciiShader.end();
 
 	post.end();
-	//-----------------------------------------------------------------------------------------------------------
+	//-----------------------------------------------------------------------------
 
 #ifdef UI
 	uiManager.draw();
@@ -201,8 +216,25 @@ void ofApp::drawParticles() {
 	float xmult = WIN_W / (float)imgW;
 	float ymult = WIN_H / (float)imgH;
 
-	particleSystem.updateColors(vpix, particle_size, bMirror);
+	// Update per-particle color, size, and glyph index using camera pixels
+	// Pass ascii mapping params so each particle gets a glyph index consistent with the shader
+	particleSystem.updateColors(vpix, particle_size, bMirror, s_asciiFontScale, s_asciiCharsetOffset,
+	                            (int)atlasSize_grid.x, (int)atlasSize_grid.y);
+
+	// Use the particle shader to render glyphs as point-sprites sampled from the atlas
+	if (particleShader.isLoaded()) {
+		particleShader.begin();
+		particleShader.setUniformTexture("asciiAtlas", fontTextures[counter], 1);
+		particleShader.setUniform1f("cellSize", atlasCellSize);
+		particleShader.setUniform2f("atlasSize", atlasSize_grid.x, atlasSize_grid.y);
+		particleShader.setUniform1f("pointSize", particle_size);
+		particleShader.setUniform1f("time", ofGetElapsedTimef());
+	}
+
 	particleSystem.draw(xmult, ymult, particle_size);
+
+	if (particleShader.isLoaded())
+		particleShader.end();
 }
 //-------------------------------------------------------------------------------------
 
@@ -271,7 +303,7 @@ void ofApp::calculateOpticalFlow() {
 	currentMat.copyTo(previousMat);
 }
 
-//-----------------------------------------------------------------------------------------------------------
+//----------------------------------------------------------------------------------------------
 glm::vec2 ofApp::getOpticalFlowValueForPercent(float xpct, float ypct) {
 	glm::vec2 flowVector(0, 0);
 
@@ -304,7 +336,7 @@ glm::vec2 ofApp::getOpticalFlowValueForPercent(float xpct, float ypct) {
 }
 
 // CALLBACKS
-//-----------------------------------------------------------------------------------------------------------
+//----------------------------------------------------------------------------------------------
 void ofApp::keyPressed(int key) {
 	unsigned idx = key - '0';
 	if (idx < post.size()) {
@@ -369,7 +401,7 @@ void ofApp::keyPressed(int key) {
 		            // Ensure texture filtering is updated immediately even if UI is disabled
 		            asciiSizeChanged(s_asciiCellScale);
 		            break;
- 
+
 		        case '.':
 		            // increase ascii on-screen cell scale (makes characters larger)
 		            s_asciiCellScale += 0.1f;
@@ -383,18 +415,58 @@ void ofApp::keyPressed(int key) {
 		            asciiSizeChanged(s_asciiCellScale);
 		            break;
 
+		        case 'd': {
+		            // toggle particle-based displacement in the ASCII shader
+		            s_asciiUseParticleDisplacement = (s_asciiUseParticleDisplacement > 0.5f) ? 0.0f : 1.0f;
+		#ifdef UI
+		            uiManager.asciiDisplacement_s = (s_asciiUseParticleDisplacement > 0.5f);
+		#endif
+		            // propagate immediately
+		            bool enabled = (s_asciiUseParticleDisplacement > 0.5f);
+		            asciiParticleDisplacementChanged(enabled);
+		            ofLogNotice() << "ASCII particle displacement: " << enabled;
+		            break;
+		        }
+
+		        case '[':
+		            // decrease particle detection threshold (more sensitive)
+		            s_asciiParticleThreshold -= 0.005f;
+		            if (s_asciiParticleThreshold < 0.0f) {
+		                s_asciiParticleThreshold = 0.0f;
+		            }
+		#ifdef UI
+		            uiManager.asciiParticleThreshold_s = s_asciiParticleThreshold;
+		#endif
+		            asciiParticleThresholdChanged(s_asciiParticleThreshold);
+		            ofLogNotice() << "ASCII particle threshold: " << s_asciiParticleThreshold;
+		            break;
+
+		        case ']':
+		            // increase particle detection threshold (less sensitive)
+		            s_asciiParticleThreshold += 0.005f;
+		            if (s_asciiParticleThreshold > 1.0f) {
+		                s_asciiParticleThreshold = 1.0f;
+		            }
+		#ifdef UI
+		            uiManager.asciiParticleThreshold_s = s_asciiParticleThreshold;
+		#endif
+		            asciiParticleThresholdChanged(s_asciiParticleThreshold);
+		            ofLogNotice() << "ASCII particle threshold: " << s_asciiParticleThreshold;
+		            break;
+
 		        case 'n':
 		            if (maps_count > 0) {
 		                counter > 0 ? counter-- : counter = maps_count - 1;
 		                loadTextureFromFile(counter);
 		            }
 		            break;
-		case 'm':
-			if (maps_count > 0) {
-				counter = (counter + 1) % maps_count; // More robust way to cycle
-				loadTextureFromFile(counter);
-			}
-			break;
+
+		        case 'm':
+		            if (maps_count > 0) {
+		                counter = (counter + 1) % maps_count; // More robust way to cycle
+		                loadTextureFromFile(counter);
+		            }
+		            break;
 	}
 }
 
@@ -439,8 +511,10 @@ void ofApp::asciiOffsetChanged(int &offset) {
 void ofApp::asciiMixChanged(float &mix) {
 	s_asciiMix = mix;
 }
+
 void ofApp::asciiSizeChanged(float &size) {
 	s_asciiCellScale = size;
+
 	// Update current atlas texture filtering immediately so changes are visible without cycling textures
 	if (maps_count > 0) {
 		if (s_asciiCellScale < 1.0f) {
@@ -451,6 +525,17 @@ void ofApp::asciiSizeChanged(float &size) {
 			fontTextures[counter].setTextureMinMagFilter(GL_NEAREST, GL_NEAREST);
 		}
 	}
+}
+
+void ofApp::asciiParticleDisplacementChanged(bool &enabled) {
+	s_asciiUseParticleDisplacement = enabled ? 1.0f : 0.0f;
+}
+
+void ofApp::asciiParticleThresholdChanged(float &v) {
+	s_asciiParticleThreshold = v;
+}
+void ofApp::asciiFullRangeChanged(bool &enabled) {
+	s_asciiFullRangeMapping = enabled;
 }
 
 //-----------------------------------------------------------------------------------------------------------
