@@ -8,6 +8,9 @@
 #include "ofxPostProcessing.h"
 #include "yolo5ImageClassify.h"
 
+// Slider for live adjustment
+#include "ofxPanel.h"
+
 #define UI
 #define USE_VIDEO_FILE // Define this macro to use a video file instead of the webcam
 
@@ -45,6 +48,9 @@ public:
 
 	float cvDownScale;
 	float minLengthSquared;
+	void flowSensitivityChanged(float &sensitivity);
+	void minLengthSquaredChanged(float &minLength);
+	void blurAmountChanged(int &amount);
 
 	int mode;
 	int blurAmount;
@@ -139,5 +145,9 @@ private:
 		return base + (param / 1000.0f) * scale;
 	}
 
-	float randDetectionSpeed;
-};
+	    float randDetectionSpeed;
+
+	    // GUI and slider for live adjustment
+	    ofxPanel gui;
+	    ofParameter<float> sliderValue;
+	};

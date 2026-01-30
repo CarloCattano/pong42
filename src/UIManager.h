@@ -13,6 +13,9 @@ public:
 
 	ofxFloatSlider  exposure_s;
 	ofxFloatSlider  weight_s;
+	ofxFloatSlider  flow_sensitivity_s;
+	ofxFloatSlider  min_length_squared_s;
+	ofxIntSlider    blur_amount_s;
 
 	ofxIntSlider    spread_s;
 	ofxIntSlider    asciiOffset_s;

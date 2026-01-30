@@ -30,16 +30,15 @@ void ofApp::setup() {
 	// store a minimum squared value to apply flow velocity
 	minLengthSquared = 0.5 * 0.5; // 0.5 pixel squared
 
-	ofVec2f paddleSize(64, 224);
-
 	ofTrueTypeFont::setGlobalDpi(72);
 
 	font.load("verdana.ttf", 22, true, true);
 	font.setLineHeight(28.0);
 	font.setLetterSpacing(1.05);
 #ifdef USE_VIDEO_FILE
-	videoPlayer.load("vidOr.mp4");
+	videoPlayer.load("vid3.mp4");
 	videoPlayer.setLoopState(OF_LOOP_NORMAL);
+	videoPlayer.setVolume(0.0f);
 	videoPlayer.play();
 	sourceWidth  = videoPlayer.getWidth();
 	sourceHeight = videoPlayer.getHeight();
@@ -61,8 +60,8 @@ void ofApp::setup() {
 	post.createPass<ZoomBlurPass>()->setEnabled(false);
 	post.createPass<EdgePass>()->setEnabled(false);
 
-    // Initialize YOLOv5 model
-    classify.setup("yolov5n.onnx", "coco.names", true);
+	// Initialize YOLOv5 model
+	classify.setup("yolov5n.onnx", "coco.names", true);
 
 
 	zoomBlur = dynamic_cast<ZoomBlurPass *>(post[1].get());
@@ -83,6 +82,10 @@ void ofApp::setup() {
 	uiManager.asciiParticleThreshold_s.addListener(this, &ofApp::asciiParticleThresholdChanged);
 	uiManager.asciiFullRange_s.addListener(this, &ofApp::asciiFullRangeChanged);
 
+	uiManager.flow_sensitivity_s.addListener(this, &ofApp::flowSensitivityChanged);
+	uiManager.min_length_squared_s.addListener(this, &ofApp::minLengthSquaredChanged);
+	uiManager.blur_amount_s.addListener(this, &ofApp::blurAmountChanged);
+
 	uiManager.setup();
 #endif
 
@@ -102,13 +105,19 @@ void ofApp::setup() {
 	counter = 0;
 	b_Ascii = true;
 	asciiShader.load("shaders/ascii.vert", "shaders/ascii.frag");
+	asciiShader.begin();
+	asciiShader.setUniformMatrix4f("uModelViewProjectionMatrix", ofGetCurrentMatrix(OF_MATRIX_PROJECTION));
+	asciiShader.end();
 	// load particle shader so particles can render glyphs 1:1
 	particleShader.load("shaders/particles.vert", "shaders/particles.frag");
-	s_asciiFontScale = 2.0f;
-	s_asciiCellScale = 1.0f;
+	particleShader.begin();
+	particleShader.setUniformMatrix4f("uModelViewProjectionMatrix", ofGetCurrentMatrix(OF_MATRIX_PROJECTION));
+	particleShader.end();
+	s_asciiFontScale               = 1.0f;
+	s_asciiCellScale               = 1.0f;
 	s_asciiUseParticleDisplacement = 0.0f;
-	s_asciiParticleThreshold = 0.02f;
-	s_asciiFullRangeMapping = false;
+	s_asciiParticleThreshold       = 0.02f;
+	s_asciiFullRangeMapping        = false;
 
 	atlasSize_grid = ofVec2f(8.0f, 8.0f);
 	// Calculate atlasCellSize and set atlasSize uniform once, assuming all font maps have the same width
@@ -185,8 +194,6 @@ void ofApp::draw() {
 
 	if (b_Ascii && asciiShader.isLoaded())
 		asciiShader.end();
-
-	drawDetectedObjects();
 	post.end();
 	//-----------------------------------------------------------------------------
 
@@ -207,7 +214,7 @@ void ofApp::generateParticles(int s_width, int s_height) {
 
 void ofApp::updateParticles() {
 	float deltaTime = ofClamp(ofGetLastFrameTime(), 1.f / 120.f, 1.f / 10.f); // reasonable clamp
-	particleSystem.updateParticles(flowMat, deltaTime, minLengthSquared, sourceWidth, sourceHeight, bMirror);
+	particleSystem.updateParticles(flowMat, deltaTime, minLengthSquared, sourceWidth, sourceHeight, bMirror, flowSensitivity, blurAmount);
 
 	leftFlowVector  = particleSystem.getLeftFlowVector();
 	rightFlowVector = particleSystem.getRightFlowVector();
@@ -244,46 +251,46 @@ void ofApp::drawParticles() {
 //-------------------------------------------------------------------------------------
 
 void ofApp::drawDetectedObjects() {
-       if (!colorImg.bAllocated) {
-               return;
-       }
+	if (!colorImg.bAllocated) {
+		return;
+	}
 
-       ofNoFill();
-       ofSetColor(255, 0, 255, 255);
+	ofNoFill();
+	ofSetColor(255, 0, 255, 255);
 
-       float scaleX = (float)WIN_W / colorImg.getWidth();
-       float scaleY = (float)WIN_H / colorImg.getHeight();
+	float scaleX = (float)WIN_W / colorImg.getWidth();
+	float scaleY = (float)WIN_H / colorImg.getHeight();
 
 
-       for (auto res : results) {
-               auto rect = res.rect;
+	for (auto res : results) {
+		auto rect = res.rect;
 
-               if (res.label.empty())
-                       continue;
+		if (res.label.empty())
+			continue;
 
-               if (bMirror) {
-                       rect.x = colorImg.getWidth() - rect.x - rect.width;
-               }
+		if (bMirror) {
+			rect.x = colorImg.getWidth() - rect.x - rect.width;
+		}
 
-               ofRectangle scaledRect(rect.x * scaleX, rect.y * scaleY, rect.width * scaleX, rect.height * scaleY);
+		ofRectangle scaledRect(rect.x * scaleX, rect.y * scaleY, rect.width * scaleX, rect.height * scaleY);
 
-               for (int i = 0; i < 4; i++) {
-                       if (ofRandom(0, 1) > 0.5) {
-                               ofSetLineWidth(sin(ofGetElapsedTimef() * randDetectionSpeed) * 16 + 1);
-                               ofDrawRectangle(scaledRect.x + i * 2, scaledRect.y + i * 2, scaledRect.width - i * ofRandom(2.0f, 6.0f),
-                                               scaledRect.height - i * ofRandom(2.0f, 6.0f));
-                       }
-               }
-               ofSetLineWidth(1);
+		for (int i = 0; i < 4; i++) {
+			if (ofRandom(0, 1) > 0.5) {
+				ofSetLineWidth(sin(ofGetElapsedTimef() * randDetectionSpeed) * 16 + 1);
+				ofDrawRectangle(scaledRect.x + i * 2, scaledRect.y + i * 2, scaledRect.width - i * ofRandom(2.0f, 6.0f),
+				                scaledRect.height - i * ofRandom(2.0f, 6.0f));
+			}
+		}
+		ofSetLineWidth(1);
 
-               int yOffset = 0;
+		int yOffset = 0;
 
-               glm::vec3 labely = scaledRect.getTopLeft() + glm::vec3(0, yOffset, 0);
+		glm::vec3 labely = scaledRect.getTopLeft() + glm::vec3(0, yOffset, 0);
 
-               ofSetColor(0, 255, 25, 255);
-               font.drawString(res.label, labely.x, labely.y);
-       }
-       ofFill();
+		ofSetColor(0, 255, 25, 255);
+		font.drawString(res.label, labely.x, labely.y);
+	}
+	ofFill();
 }
 
 void ofApp::updateCamera() {
@@ -337,9 +344,9 @@ void ofApp::processNewFrame() {
 	currentImage.scaleIntoMe(grayImage);
 	auto cvMat = cv::cvarrToMat(colorImg.getCvImage()).clone();
 
-    if (ofGetFrameNum() % 3 == 0) {
-            results = classify.classifyFrame(cvMat);
-    }
+	if (ofGetFrameNum() % 5 == 0) {
+		results = classify.classifyFrame(cvMat);
+	}
 
 	if (bContrastStretch)
 		currentImage.contrastStretch();
@@ -434,92 +441,92 @@ void ofApp::keyPressed(int key) {
 			}
 			break;
 
-		        case 'x':
-		            b_Ascii = !b_Ascii;
-		            if (b_Ascii) {
-		                ofLogNotice() << "ASCII SHADER ON";
-		                asciiShader.load("shaders/ascii.vert", "shaders/ascii.frag");
-		            }
-		            break;
+		case 'x':
+			b_Ascii = !b_Ascii;
+			if (b_Ascii) {
+				ofLogNotice() << "ASCII SHADER ON";
+				asciiShader.load("shaders/ascii.vert", "shaders/ascii.frag");
+			}
+			break;
 
-		        case ',':
-		            // decrease ascii on-screen cell scale (makes characters smaller)
-		            s_asciiCellScale -= 0.1f;
-		            if (s_asciiCellScale < 0.1f) {
-		                s_asciiCellScale = 0.1f;
-		            }
-		#ifdef UI
-		            uiManager.asciiSize_s = s_asciiCellScale;
-		#endif
-		            // Ensure texture filtering is updated immediately even if UI is disabled
-		            asciiSizeChanged(s_asciiCellScale);
-		            break;
+		case ',':
+			// decrease ascii on-screen cell scale (makes characters smaller)
+			s_asciiCellScale -= 0.1f;
+			if (s_asciiCellScale < 0.1f) {
+				s_asciiCellScale = 0.1f;
+			}
+#ifdef UI
+			uiManager.asciiSize_s = s_asciiCellScale;
+#endif
+			// Ensure texture filtering is updated immediately even if UI is disabled
+			asciiSizeChanged(s_asciiCellScale);
+			break;
 
-		        case '.':
-		            // increase ascii on-screen cell scale (makes characters larger)
-		            s_asciiCellScale += 0.1f;
-		            if (s_asciiCellScale > 4.0f) {
-		                s_asciiCellScale = 4.0f;
-		            }
-		#ifdef UI
-		            uiManager.asciiSize_s = s_asciiCellScale;
-		#endif
-		            // Ensure texture filtering is updated immediately even if UI is disabled
-		            asciiSizeChanged(s_asciiCellScale);
-		            break;
+		case '.':
+			// increase ascii on-screen cell scale (makes characters larger)
+			s_asciiCellScale += 0.1f;
+			if (s_asciiCellScale > 4.0f) {
+				s_asciiCellScale = 4.0f;
+			}
+#ifdef UI
+			uiManager.asciiSize_s = s_asciiCellScale;
+#endif
+			// Ensure texture filtering is updated immediately even if UI is disabled
+			asciiSizeChanged(s_asciiCellScale);
+			break;
 
-		        case 'd': {
-		            // toggle particle-based displacement in the ASCII shader
-		            s_asciiUseParticleDisplacement = (s_asciiUseParticleDisplacement > 0.5f) ? 0.0f : 1.0f;
-		#ifdef UI
-		            uiManager.asciiDisplacement_s = (s_asciiUseParticleDisplacement > 0.5f);
-		#endif
-		            // propagate immediately
-		            bool enabled = (s_asciiUseParticleDisplacement > 0.5f);
-		            asciiParticleDisplacementChanged(enabled);
-		            ofLogNotice() << "ASCII particle displacement: " << enabled;
-		            break;
-		        }
+		case 'd': {
+			// toggle particle-based displacement in the ASCII shader
+			s_asciiUseParticleDisplacement = (s_asciiUseParticleDisplacement > 0.5f) ? 0.0f : 1.0f;
+#ifdef UI
+			uiManager.asciiDisplacement_s = (s_asciiUseParticleDisplacement > 0.5f);
+#endif
+			// propagate immediately
+			bool enabled = (s_asciiUseParticleDisplacement > 0.5f);
+			asciiParticleDisplacementChanged(enabled);
+			ofLogNotice() << "ASCII particle displacement: " << enabled;
+			break;
+		}
 
-		        case '[':
-		            // decrease particle detection threshold (more sensitive)
-		            s_asciiParticleThreshold -= 0.005f;
-		            if (s_asciiParticleThreshold < 0.0f) {
-		                s_asciiParticleThreshold = 0.0f;
-		            }
-		#ifdef UI
-		            uiManager.asciiParticleThreshold_s = s_asciiParticleThreshold;
-		#endif
-		            asciiParticleThresholdChanged(s_asciiParticleThreshold);
-		            ofLogNotice() << "ASCII particle threshold: " << s_asciiParticleThreshold;
-		            break;
+		case '[':
+			// decrease particle detection threshold (more sensitive)
+			s_asciiParticleThreshold -= 0.005f;
+			if (s_asciiParticleThreshold < 0.0f) {
+				s_asciiParticleThreshold = 0.0f;
+			}
+#ifdef UI
+			uiManager.asciiParticleThreshold_s = s_asciiParticleThreshold;
+#endif
+			asciiParticleThresholdChanged(s_asciiParticleThreshold);
+			ofLogNotice() << "ASCII particle threshold: " << s_asciiParticleThreshold;
+			break;
 
-		        case ']':
-		            // increase particle detection threshold (less sensitive)
-		            s_asciiParticleThreshold += 0.005f;
-		            if (s_asciiParticleThreshold > 1.0f) {
-		                s_asciiParticleThreshold = 1.0f;
-		            }
-		#ifdef UI
-		            uiManager.asciiParticleThreshold_s = s_asciiParticleThreshold;
-		#endif
-		            asciiParticleThresholdChanged(s_asciiParticleThreshold);
-		            ofLogNotice() << "ASCII particle threshold: " << s_asciiParticleThreshold;
-		            break;
+		case ']':
+			// increase particle detection threshold (less sensitive)
+			s_asciiParticleThreshold += 0.005f;
+			if (s_asciiParticleThreshold > 1.0f) {
+				s_asciiParticleThreshold = 1.0f;
+			}
+#ifdef UI
+			uiManager.asciiParticleThreshold_s = s_asciiParticleThreshold;
+#endif
+			asciiParticleThresholdChanged(s_asciiParticleThreshold);
+			ofLogNotice() << "ASCII particle threshold: " << s_asciiParticleThreshold;
+			break;
 
-		        case 'n':
-		            if (maps_count > 0) {
-		                counter > 0 ? counter-- : counter = maps_count - 1;
-		                loadTextureFromFile(counter);
-		            }
-		            break;
+		case 'n':
+			if (maps_count > 0) {
+				counter > 0 ? counter-- : counter = maps_count - 1;
+				loadTextureFromFile(counter);
+			}
+			break;
 
-		        case 'm':
-		            if (maps_count > 0) {
-		                counter = (counter + 1) % maps_count; // More robust way to cycle
-		                loadTextureFromFile(counter);
-		            }
-		            break;
+		case 'm':
+			if (maps_count > 0) {
+				counter = (counter + 1) % maps_count; // More robust way to cycle
+				loadTextureFromFile(counter);
+			}
+			break;
 	}
 }
 
@@ -531,7 +538,6 @@ void ofApp::windowResized(int w, int h) {
 		particlesFbo.allocate(WIN_W, WIN_H, GL_RGBA);
 		post.init(WIN_W, WIN_H);
 	}
-
 	ofSetWindowShape(WIN_W, WIN_H);
 }
 
@@ -540,6 +546,18 @@ void ofApp::spacingChanged(int &spacing) {
 	spacing       = ofClamp(spacing, 2, 32);
 
 	generateParticles(WIN_W, WIN_H);
+}
+
+void ofApp::flowSensitivityChanged(float &sensitivity) {
+	this->flowSensitivity = sensitivity;
+}
+
+void ofApp::minLengthSquaredChanged(float &minLength) {
+	this->minLengthSquared = minLength * minLength; // Store squared value
+}
+
+void ofApp::blurAmountChanged(int &amount) {
+	this->blurAmount = ofClamp(amount, 1, 10); // Clamp blur amount to a reasonable range
 }
 
 void ofApp::particleSizeChanged(float &particle_size) {
@@ -607,7 +625,8 @@ void ofApp::loadTextureFromFile(int index) {
 	} else {
 		fontTextures[index].setTextureMinMagFilter(GL_NEAREST, GL_NEAREST);
 	}
-	asciiShader.setUniformTexture("asciiAtlas", fontTextures[index], 1); // Use pre-loaded texture
+	ofLogNotice("ofApp") << "Loaded texture from file: " << fontmaps[index];
+	asciiShader.setUniformTexture("asciiAtlas", fontTextures[index], 1);
 }
 
 void ofApp::loadMapNames() {
@@ -620,4 +639,5 @@ void ofApp::loadMapNames() {
 	for (unsigned int i = 0; i < maps_count; i++) { // Loop through all found files
 		fontmaps[i] = dir.getPath(i);
 	}
+	ofLogNotice("ofApp") << "Loaded " << maps_count << " font map(s).";
 }

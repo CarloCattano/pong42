@@ -50,8 +50,8 @@ public:
 		}
 	}
 
-	void updateParticles(const cv::Mat &flowMat, float deltaTime,float minLengthSquared, float sourceWidth,
-	                     float sourceHeight, bool bMirror) {
+	void updateParticles(const cv::Mat &flowMat, float deltaTime, float minLengthSquared, float sourceWidth,
+	                     float sourceHeight, bool bMirror, float flowSensitivity, int blurAmount) {
 		leftFlowVector    = glm::vec2(0, 0);
 		rightFlowVector   = glm::vec2(0, 0);
 		size_t leftCount  = 0;
@@ -71,10 +71,9 @@ public:
 			}
 
 			float len2 = glm::length2(flowForce);
-			particle.vel /= 1.f + deltaTime;
 
 			if (len2 > minLengthSquared) {
-				particle.vel += flowForce * (30.0f * deltaTime);
+				particle.vel += flowForce * glm::clamp(flowSensitivity, 0.1f, 2.0f) * deltaTime;
 				if (particle.bAtBasePos)
 					particle.timeNotTouched = 0.0f;
 				particle.bAtBasePos = false;
